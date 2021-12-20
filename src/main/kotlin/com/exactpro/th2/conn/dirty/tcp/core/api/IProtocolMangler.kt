@@ -19,12 +19,63 @@ package com.exactpro.th2.conn.dirty.tcp.core.api
 import com.exactpro.th2.common.event.Event
 import io.netty.buffer.ByteBuf
 
+/**
+ * Mangles protocol messages on a single [channel][IChannel]
+ */
 interface IProtocolMangler : AutoCloseable {
+    /**
+     * This method is called after a corresponding channel has been opened (e.g. TCP connection is established).
+     */
     fun onOpen() = Unit
+
+    /**
+     * This method is called for each [message] read from a corresponding channel.
+     *
+     * It can be used to change mangling algorithm after a certain message was received
+     *
+     * @param message received message
+     *
+     * @return message metadata
+     */
     fun onIncoming(message: ByteBuf, metadata: Map<String, String>) = Unit
+
+    /**
+     * This method is can be called before sending [message] to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).
+     *
+     * It should analyze message and its metadata and modify message (e.g. add header) if required.
+     *
+     * If message was modified it must return event with modifications description
+     *
+     * It can also be used to send a message before this one or even close the corresponding channel
+     *
+     * @param message mutable buffer with outgoing message
+     * @param metadata message metadata
+     * @return event with message modifications descriptions or `null` if there wasn't any
+     */
     fun onOutgoing(message: ByteBuf, metadata: Map<String, String>): Event?
+
+    /**
+     * This method is called after [message] was sent to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode])
+     *
+     * For example, it can be used close a corresponding channel after a certain message was sent
+     *
+     * @param message buffer with sent message
+     * @param metadata message metadata
+     */
     fun afterOutgoing(message: ByteBuf, metadata: Map<String, String>) = Unit
+
+    /**
+     * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).
+     *
+     * For example, it can be used to perform cleanup session-related resources and schedule reconnect
+     */
     fun onClose() = Unit
+
+    /**
+     * This method is called when microservice shutdown process was initiated
+     *
+     * For example, it can be used to clean-up long-living resources (executors, schedulers, etc.)
+     */
     override fun close() = Unit
 }
 

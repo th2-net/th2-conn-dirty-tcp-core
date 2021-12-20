@@ -17,7 +17,21 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
 interface IFactory<I, S> {
+    /**
+     * Returns factory name
+     */
     val name: String
+
+    /**
+     * Returns settings class of entities produced by this factory
+     */
     val settings: Class<out S>
+
+    /**
+     * Creates an entity with provided [context]
+     *
+     * @param context entity context
+     * @return entity instance
+     */
     fun create(context: IContext<S>): I
 }

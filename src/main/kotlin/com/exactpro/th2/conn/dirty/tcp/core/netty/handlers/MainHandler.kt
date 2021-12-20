@@ -43,7 +43,7 @@ class MainHandler(
     }
 
     override fun decode(ctx: ChannelHandlerContext, buf: ByteBuf, out: MutableList<Any>) {
-        logger.trace { "Attempting to decode ${buf.readableBytes()} bytes received from: ${ctx.channel().remoteAddress()}" }
+        logger.trace { "Attempting to decode data received from: ${ctx.channel().remoteAddress()} (data: ${hexDump(buf)})" }
 
         generateSequence { buf.readMessage(ctx) }.forEach { message ->
             onEvent {

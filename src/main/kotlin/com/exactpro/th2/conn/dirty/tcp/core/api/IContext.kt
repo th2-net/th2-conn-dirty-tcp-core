@@ -20,9 +20,33 @@ import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import java.io.InputStream
 
+/**
+ * Single mangler/handler context
+ */
 interface IContext<T> {
+    /**
+     * Returns [channel][IChannel] linked to a mangler/handler
+     */
     val channel: IChannel
+
+    /**
+     * Returns settings of a [handler][IProtocolHandler]/[mangler][IProtocolMangler]
+     */
     val settings: T
+
+    /**
+     * Returns input stream with requested [dictionary]
+     *
+     * @param dictionary dictionary type
+     *
+     * @return dictionary input stream
+     */
     operator fun get(dictionary: DictionaryType): InputStream
+
+    /**
+     * Sends an [event]
+     *
+     * @param event event to send
+     */
     fun send(event: Event)
 }

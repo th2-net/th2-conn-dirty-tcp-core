@@ -20,12 +20,30 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicReference
 
+/**
+ * Executor which ensures that actions of a single stream are executed in their submission order.
+ *
+ * Actions of different streams can be executed concurrently
+ *
+ * @param executor executor to run actions on
+ * @param onError callback for failed executions
+ */
 class ActionStreamExecutor(
     private val executor: Executor,
     private val onError: (stream: String, error: Throwable) -> Unit
 ) {
     private val streams = ConcurrentHashMap<String, Action>()
 
+    /**
+     * Schedules execution of [action] in the specified [stream].
+     *
+     * Action will be scheduled for execution immediately if the previous action has been already executed.
+     *
+     * Otherwise, it will be linked to the previous action which schedule it for execution after its completion.
+     *
+     * @param stream action stream
+     * @param action action to execute in the stream
+     */
     fun execute(stream: String, action: Runnable) {
         // add backpressure?
         streams.compute(stream) { _, previous -> Action(action, stream, previous) }

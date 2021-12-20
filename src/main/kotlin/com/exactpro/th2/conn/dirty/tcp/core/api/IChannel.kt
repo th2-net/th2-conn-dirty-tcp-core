@@ -20,16 +20,74 @@ import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode.HANDLE_AND_MANGLE
 import io.netty.buffer.ByteBuf
 
+/**
+ * Represents a single TCP connection
+ */
 interface IChannel {
+    /**
+     * Returns `true` if this channel is open
+     */
     val isOpen: Boolean
+
+    /**
+     * Opens this channel (i.e. establishes a TCP connection).
+     *
+     * If operation was successful [IProtocolHandler.onOpen] and [IProtocolMangler.onOpen] methods will be called next
+     */
     fun open()
+
+    /**
+     * Sends [message] to this channel (if channel is closed it will be opened first).
+     *
+     * Depending on send [mode] message and [metadata] could be passed to [IProtocolHandler.onOutgoing] and/or [IProtocolMangler.onOutgoing]
+     * methods which can modify message content and substitute metadata (in case of [IProtocolHandler.onOutgoing]).
+     *
+     * If mode is set to [SendMode.HANDLE_AND_MANGLE] or [SendMode.MANGLE] message and metadata will be passed to [IProtocolMangler.afterOutgoing] after send
+     *
+     * For example, in case if mode is set to [SendMode.HANDLE_AND_MANGLE] processing sequence will look like this:
+     *
+     * ```
+     * val metadata = handler.onOutgoing(message, metadata)
+     * val event = mangler.onOutgoing(message, metadata)
+     *
+     * socket.send(message)
+     * mangler.afterOutgoing(message, metadata)
+     * ```
+     *
+     * @param message message content (can be passed to handler and/or mangler)
+     * @param metadata message metadata (can be passed to handler and/or mangler)
+     * @param mode message send mode (specifies who would handle message/metadata - handler, mangler, both or none of them)
+     *
+     * @return ID of sent message
+     */
     fun send(message: ByteBuf, metadata: Map<String, String> = mapOf(), mode: SendMode = HANDLE_AND_MANGLE): MessageID
+
+    /**
+     * Closes this channel (i.e. closes a TCP connection).
+     *
+     * If operation was successful [IProtocolHandler.onClose] and [IProtocolMangler.onClose] methods will be called next
+     */
     fun close()
 
     enum class SendMode(val handle: Boolean, val mangle: Boolean) {
+        /**
+         * Message and its metadata will pass through [IProtocolHandler.onOutgoing] and [IProtocolMangler.onOutgoing] before send
+         */
         HANDLE_AND_MANGLE(true, true),
+
+        /**
+         * Message and its metadata will only be passed to [IProtocolHandler.onOutgoing] before send
+         */
         HANDLE(true, false),
+
+        /**
+         * Message and its metadata will only be passed to [IProtocolMangler.onOutgoing] before send
+         */
         MANGLE(false, true),
+
+        /**
+         * Message will be sent directly to socket
+         */
         DIRECT(false, false)
     }
 }
