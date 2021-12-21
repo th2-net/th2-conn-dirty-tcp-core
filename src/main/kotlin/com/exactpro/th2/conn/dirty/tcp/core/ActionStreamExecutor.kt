@@ -18,7 +18,9 @@ package com.exactpro.th2.conn.dirty.tcp.core
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.locks.LockSupport
 
 /**
  * Executor which ensures that actions of a single stream are executed in their submission order.
@@ -26,32 +28,50 @@ import java.util.concurrent.atomic.AtomicReference
  * Actions of different streams can be executed concurrently
  *
  * @param executor executor to run actions on
+ * @param boundedStreamSize max stream size for streams with backpressure
  * @param onError callback for failed executions
  */
 class ActionStreamExecutor(
     private val executor: Executor,
+    private val boundedStreamSize: Int = 1000,
     private val onError: (stream: String, error: Throwable) -> Unit
 ) {
-    private val streams = ConcurrentHashMap<String, Action>()
+    private val actions = ConcurrentHashMap<String, Action>()
+    private val sizes = ConcurrentHashMap<String, AtomicInteger>() // use semaphores instead?
 
     /**
-     * Schedules execution of [action] in the specified [stream].
+     * Submits [action] for execution in the specified [stream].
      *
-     * Action will be scheduled for execution immediately if the previous action has been already executed.
+     * Streams can be bounded and unbounded.
      *
-     * Otherwise, it will be linked to the previous action which schedule it for execution after its completion.
+     * Submissions to bounded streams will be blocked while max stream size is exceeded.
+     *
+     * During submission action will be scheduled for execution immediately if the previous action has been already executed.
+     *
+     * Otherwise, it will be linked to the previous action which will schedule it for execution after completion.
      *
      * @param stream action stream
+     * @param bounded tells whether stream is bounded or not
      * @param action action to execute in the stream
      */
-    fun execute(stream: String, action: Runnable) {
-        // add backpressure?
-        streams.compute(stream) { _, previous -> Action(action, stream, previous) }
+    fun execute(stream: String, bounded: Boolean = true, action: Runnable) {
+        val stream = if (bounded) stream else "$stream-unbounded"
+        val size = sizes.getOrPut(stream, ::AtomicInteger)
+
+        if (bounded) {
+            while (size.get() > boundedStreamSize) {
+                LockSupport.parkNanos(1_000_000)
+            }
+        }
+
+        size.incrementAndGet()
+        actions.compute(stream) { _, previous -> Action(action, stream, size, previous) }
     }
 
     private inner class Action(
         private val action: Runnable,
         private val stream: String,
+        private val size: AtomicInteger,
         previous: Action? = null
     ) : Runnable {
         private val next = AtomicReference(NOP)
@@ -64,6 +84,7 @@ class ActionStreamExecutor(
 
         override fun run() = executor.execute {
             runCatching(action::run).recoverCatching { onError(stream, it) }
+            size.decrementAndGet()
             next.getAndSet(null).run()
         }
     }

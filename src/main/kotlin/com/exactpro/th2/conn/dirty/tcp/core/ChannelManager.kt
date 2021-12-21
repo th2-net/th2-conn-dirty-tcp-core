@@ -29,16 +29,16 @@ class ChannelManager(
 
     fun isRunning(sessionAlias: String): Boolean = getChannel(sessionAlias).isOpen
 
-    fun open(sessionAlias: String, stopAfter: Long = 0) = getChannel(sessionAlias).apply {
+    fun open(sessionAlias: String, closeAfter: Long = 0) = getChannel(sessionAlias).apply {
         synchronized(this) {
             if (!isOpen) return@apply else open()
-            if (stopAfter <= 0) return@apply
-            stopFutures[sessionAlias] = executor.schedule(::close, stopAfter, MILLISECONDS)
+            if (closeAfter <= 0) return@apply
+            stopFutures[sessionAlias] = executor.schedule(::close, closeAfter, MILLISECONDS)
         }
     }
 
-    fun openAll(stopAfter: Long = 0) = channels.keys.forEach { sessionAlias ->
-        open(sessionAlias, stopAfter)
+    fun openAll(closeAfter: Long = 0) = channels.keys.forEach { sessionAlias ->
+        open(sessionAlias, closeAfter)
     }
 
     fun close(sessionAlias: String) = getChannel(sessionAlias).apply {

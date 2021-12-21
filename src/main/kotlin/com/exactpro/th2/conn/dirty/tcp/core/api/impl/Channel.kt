@@ -32,7 +32,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.netty.ITcpChannelHandler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.TcpChannel
 import com.exactpro.th2.conn.dirty.tcp.core.util.asExpandable
 import com.exactpro.th2.conn.dirty.tcp.core.util.attachMessage
-import com.exactpro.th2.conn.dirty.tcp.core.util.getParentEventId
+import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
 import com.exactpro.th2.conn.dirty.tcp.core.util.toByteBuf
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
@@ -67,7 +67,7 @@ class Channel(
         address,
         secure,
         eventLoopGroup,
-        { actionExecutor.execute("channel-events-$sessionAlias", it) },
+        { actionExecutor.execute("channel-events-$sessionAlias", false, it) },
         this
     )
 
@@ -92,7 +92,7 @@ class Channel(
     fun send(message: RawMessage) = sendInternal(
         message = message.body.toByteBuf(),
         metadata = message.metadata.propertiesMap,
-        parentEventId = message.getParentEventId(parentEventId)
+        parentEventId = message.eventId
     )
 
     override fun send(message: ByteBuf, metadata: Map<String, String>, mode: SendMode) = sendInternal(
@@ -105,7 +105,7 @@ class Channel(
         message: ByteBuf,
         metadata: Map<String, String> = mapOf(),
         mode: SendMode = HANDLE_AND_MANGLE,
-        parentEventId: EventID = this.parentEventId
+        parentEventId: EventID? = null
     ): MessageID = lock.withLock {
         if (!isOpen) open()
 
@@ -117,7 +117,7 @@ class Channel(
         channel.send(buffer.asReadOnly())
         if (mode.mangle) mangler.afterOutgoing(buffer, metadata)
 
-        event?.run { storeEvent(attachMessage(protoMessage), parentEventId) }
+        event?.run { storeEvent(attachMessage(protoMessage), parentEventId ?: this@Channel.parentEventId) }
         storeMessage(protoMessage)
 
         protoMessage.metadata.id
@@ -152,7 +152,7 @@ class Channel(
         logger.trace { "Received message: ${hexDump(message)}" }
         val metadata = handler.onIncoming(message.asReadOnly())
         mangler.onIncoming(message.asReadOnly(), metadata)
-        val protoMessage = message.toMessage(sessionAlias, FIRST, metadata, parentEventId)
+        val protoMessage = message.toMessage(sessionAlias, FIRST, metadata)
         storeMessage(protoMessage)
     }
 

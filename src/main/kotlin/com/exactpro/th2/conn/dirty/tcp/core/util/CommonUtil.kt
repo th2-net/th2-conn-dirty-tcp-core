@@ -67,9 +67,9 @@ fun ByteBuf.toMessage(
     sessionAlias: String,
     direction: Direction,
     metadata: Map<String, String>,
-    parentEventId: EventID
+    parentEventId: EventID? = null
 ): RawMessage = RawMessage.newBuilder().run {
-    this.parentEventId = parentEventId
+    parentEventId?.let { this.parentEventId = it }
     this.body = ByteString.copyFrom(this@toMessage.asReadOnly().nioBuffer())
     this.sessionAlias = sessionAlias
     this.direction = direction
@@ -103,11 +103,6 @@ fun RawMessage.toGroup(): MessageGroup = MessageGroup.newBuilder().run {
     build()
 }
 
-fun RawMessage.getParentEventId(defaultValue: EventID): EventID = when (hasParentEventId()) {
-    true -> parentEventId
-    else -> defaultValue
-}
-
 fun ByteString.toByteBuf(): ByteBuf = asReadOnlyByteBuffer().run(Unpooled.buffer(size())::writeBytes)
 
 val MessageID.logId: String
@@ -120,10 +115,12 @@ val MessageID.logId: String
         subsequenceList.joinTo(this, "") { ".$it" }
     }
 
+val RawMessage.eventId: EventID?
+    get() = if (hasParentEventId()) parentEventId else null
 
-val AnyMessage.parentEventId: EventID?
+val AnyMessage.eventId: EventID?
     get() = when (kindCase) {
-        RAW_MESSAGE -> rawMessage.takeIf(RawMessage::hasParentEventId)?.parentEventId
+        RAW_MESSAGE -> rawMessage.eventId
         MESSAGE -> message.takeIf(Message::hasParentEventId)?.parentEventId
         else -> error("Cannot get parent event id from $kindCase message: ${toJson()}")
     }

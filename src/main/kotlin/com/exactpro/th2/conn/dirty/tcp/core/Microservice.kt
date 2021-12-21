@@ -35,9 +35,9 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Context
+import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
 import com.exactpro.th2.conn.dirty.tcp.core.util.logId
 import com.exactpro.th2.conn.dirty.tcp.core.util.messageId
-import com.exactpro.th2.conn.dirty.tcp.core.util.parentEventId
 import com.exactpro.th2.conn.dirty.tcp.core.util.sessionAlias
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
@@ -190,15 +190,16 @@ class Microservice(
     private fun publishSentEvents(batch: MessageGroupBatch) {
         if (!settings.publishSentEvents) return
 
-        val messageIds = batch.groupsList.groupBy(
-            { it.messagesList[0].parentEventId!! },
+        val eventMessages = batch.groupsList.groupBy(
+            { it.messagesList[0].eventId },
             { it.messagesList[0].messageId }
         )
 
-        messageIds.forEach { (parentEventId, messageIds) ->
+        for ((eventId, messageIds) in eventMessages) {
+            if (eventId == null) continue
             val event = "Sent ${messageIds.size} message(s)".toEvent()
             messageIds.forEach(event::messageID)
-            eventRouter.storeEvent(event, parentEventId.id)
+            eventRouter.storeEvent(event, eventId.id)
         }
     }
 
@@ -239,7 +240,7 @@ class Microservice(
     }
 
     private fun AnyMessage.getErrorEventId(): String {
-        return (parentEventId ?: channels[sessionAlias]?.parentEventId)?.id ?: errorEventId
+        return (eventId ?: channels[sessionAlias]?.parentEventId)?.id ?: errorEventId
     }
 
     companion object {
