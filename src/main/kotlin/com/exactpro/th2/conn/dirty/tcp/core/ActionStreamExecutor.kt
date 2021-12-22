@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core
 
+import mu.KotlinLogging
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
 import java.util.concurrent.atomic.AtomicInteger
@@ -28,16 +29,16 @@ import java.util.concurrent.locks.LockSupport
  * Actions of different streams can be executed concurrently
  *
  * @param executor executor to run actions on
- * @param boundedStreamSize max stream size for streams with backpressure
+ * @param maxStreamSize max stream size for bounded streams
  * @param onError callback for failed executions
  */
 class ActionStreamExecutor(
     private val executor: Executor,
-    private val boundedStreamSize: Int = 1000,
+    private val maxStreamSize: Int = 1000,
     private val onError: (stream: String, error: Throwable) -> Unit
 ) {
-    private val actions = ConcurrentHashMap<String, Action>()
-    private val sizes = ConcurrentHashMap<String, AtomicInteger>() // use semaphores instead?
+    private val logger = KotlinLogging.logger {}
+    private val streams = ConcurrentHashMap<String, Stream>()
 
     /**
      * Submits [action] for execution in the specified [stream].
@@ -55,41 +56,48 @@ class ActionStreamExecutor(
      * @param action action to execute in the stream
      */
     fun execute(stream: String, bounded: Boolean = true, action: Runnable) {
-        val stream = if (bounded) stream else "$stream-unbounded"
-        val size = sizes.getOrPut(stream, ::AtomicInteger)
-
-        if (bounded) {
-            while (size.get() > boundedStreamSize) {
-                LockSupport.parkNanos(1_000_000)
-            }
+        val stream = when (bounded) {
+            true -> streams.computeIfAbsent(stream) { Stream(stream, maxStreamSize) }
+            else -> streams.computeIfAbsent("$stream-unbounded", ::Stream)
         }
 
-        size.incrementAndGet()
-        actions.compute(stream) { _, previous -> Action(action, stream, size, previous) }
+        if (!stream.offer(action)) {
+            logger.warn { "Stream is full: ${stream.name}" }
+            stream.put(action)
+            logger.debug { "Added action to stream: ${stream.name}" }
+        }
     }
 
-    private inner class Action(
-        private val action: Runnable,
-        private val stream: String,
-        private val size: AtomicInteger,
-        previous: Action? = null
-    ) : Runnable {
-        private val next = AtomicReference(NOP)
+    private inner class Stream(val name: String, val capacity: Int = Int.MAX_VALUE) {
+        private val tail = AtomicReference(NIL)
+        private val size = AtomicInteger()
 
-        init {
-            if (previous == null || !previous.next.compareAndSet(NOP, this)) {
-                run()
-            }
+        fun put(action: Runnable) {
+            while (!offer(action)) LockSupport.parkNanos(1_000_000)
         }
 
-        override fun run() = executor.execute {
-            runCatching(action::run).recoverCatching { onError(stream, it) }
-            size.decrementAndGet()
-            next.getAndSet(null).run()
+        fun offer(action: Runnable): Boolean {
+            if (size.get() >= capacity) return false
+
+            size.incrementAndGet()
+
+            val next = AtomicReference(NOP)
+            val prev = tail.getAndSet(next)
+
+            val task = Runnable {
+                runCatching(action::run).recoverCatching { onError(name, it) }
+                size.decrementAndGet()
+                executor.execute(next.getAndSet(null))
+            }
+
+            if (!prev.compareAndSet(NOP, task)) executor.execute(task)
+
+            return true
         }
     }
 
     companion object {
         private val NOP = Runnable {}
+        private val NIL = AtomicReference<Runnable>()
     }
 }
