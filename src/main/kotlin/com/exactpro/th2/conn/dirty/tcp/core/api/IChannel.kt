@@ -19,22 +19,48 @@ package com.exactpro.th2.conn.dirty.tcp.core.api
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode.HANDLE_AND_MANGLE
 import io.netty.buffer.ByteBuf
+import java.net.InetSocketAddress
 
 /**
  * Represents a single TCP connection
  */
 interface IChannel {
     /**
+     * Returns current channel address
+     */
+    val address: InetSocketAddress
+
+    /**
      * Returns `true` if this channel is open
      */
     val isOpen: Boolean
 
     /**
-     * Opens this channel (i.e. establishes a TCP connection).
+     * Returns `true` if this channel is using encryption
+     */
+    val isSecure: Boolean
+
+    /**
+     * Opens this channel using default address (i.e. establishes a TCP connection).
+     *
+     * It will fail if channel is already open.
      *
      * If operation was successful [IProtocolHandler.onOpen] and [IProtocolMangler.onOpen] methods will be called next
      */
     fun open()
+
+
+    /**
+     * Opens this channel using the specified [address] (i.e. establishes a TCP connection).
+     *
+     * It will fail if channel is already open.
+     *
+     * If operation was successful [IProtocolHandler.onOpen] and [IProtocolMangler.onOpen] methods will be called next
+     *
+     * @param address address to open channel for
+     * @param secure `true` if channel must use encryption
+     */
+    fun open(address: InetSocketAddress, secure: Boolean = false)
 
     /**
      * Sends [message] to this channel (if channel is closed it will be opened first).
@@ -63,9 +89,13 @@ interface IChannel {
     fun send(message: ByteBuf, metadata: Map<String, String> = mapOf(), mode: SendMode = HANDLE_AND_MANGLE): MessageID
 
     /**
-     * Closes this channel (i.e. closes a TCP connection).
+     * Closes this channel (i.e. closes a TCP connection) gracefully.
      *
-     * If operation was successful [IProtocolHandler.onClose] and [IProtocolMangler.onClose] methods will be called next
+     * Unlike unexpected channel closure (i.e. caused by remote host or inbound message handling error) it won't trigger reconnection.
+     *
+     * If operation was successful [IProtocolHandler.onClose] and [IProtocolMangler.onClose] methods will be called next.
+     *
+     * If channel is already closed it will have no effect
      */
     fun close()
 

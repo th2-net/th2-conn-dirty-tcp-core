@@ -33,8 +33,8 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
 class TcpChannel(
-    private val address: InetSocketAddress,
-    secure: Boolean,
+    val address: InetSocketAddress,
+    val isSecure: Boolean,
     group: EventLoopGroup,
     executor: Executor,
     handler: ITcpChannelHandler
@@ -48,7 +48,7 @@ class TcpChannel(
         remoteAddress(address)
         handler(object : ChannelInitializer<Channel>() {
             override fun initChannel(ch: Channel): Unit = ch.pipeline().run {
-                if (secure) {
+                if (isSecure) {
                     val context = SslContextBuilder.forClient().build()
                     val engine = context.newEngine(ch.alloc())
                     addLast("ssl", SslHandler(engine))

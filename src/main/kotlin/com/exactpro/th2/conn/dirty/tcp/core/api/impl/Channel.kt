@@ -47,37 +47,44 @@ import kotlin.concurrent.withLock
 
 
 class Channel(
-    private val address: InetSocketAddress,
-    secure: Boolean,
+    private val defaultAddress: InetSocketAddress,
+    private val defaultSecure: Boolean,
     private val sessionAlias: String,
     private val reconnectDelay: Long,
     private val handler: IProtocolHandler,
     private val mangler: IProtocolMangler,
     private val onEvent: (event: Event, parentEventId: EventID) -> Unit,
     private val onMessage: (RawMessage) -> Unit,
-    eventLoopGroup: EventLoopGroup,
+    private val eventLoopGroup: EventLoopGroup,
     private val actionExecutor: ActionStreamExecutor,
     val parentEventId: EventID
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
     private val lock = ReentrantLock()
     @Volatile private var reconnect = true
+    @Volatile private var channel = createChannel(defaultAddress, defaultSecure)
 
-    private val channel = TcpChannel(
-        address,
-        secure,
-        eventLoopGroup,
-        { actionExecutor.execute("channel-events-$sessionAlias", false, it) },
-        this
-    )
+    override val address: InetSocketAddress
+        get() = channel.address
 
     override val isOpen: Boolean
         get() = channel.isOpen
 
-    override fun open() {
+    override val isSecure: Boolean
+        get() = channel.isSecure
+
+    override fun open() = open(defaultAddress, defaultSecure)
+
+    override fun open(address: InetSocketAddress, secure: Boolean) {
         reconnect = true
 
         lock.withLock {
+            check(!isOpen) { "Already connected to: ${channel.address}" }
+
+            if (address != channel.address || secure != channel.isSecure) {
+                channel = createChannel(address, secure)
+            }
+
             while (!isOpen && reconnect) {
                 onInfo("Connecting to: $address")
 
@@ -166,7 +173,7 @@ class Channel(
 
         if (reconnect) {
             Thread.sleep(reconnectDelay)
-            open()
+            open(channel.address, channel.isSecure)
         }
     }
 
@@ -187,4 +194,12 @@ class Channel(
     private fun storeEvent(event: Event, parentEventId: EventID) {
         actionExecutor.execute("events-$sessionAlias") { onEvent(event, parentEventId) }
     }
+
+    private fun createChannel(address: InetSocketAddress, secure: Boolean) = TcpChannel(
+        address,
+        secure,
+        eventLoopGroup,
+        { actionExecutor.execute("channel-events-$sessionAlias", false, it) },
+        this
+    )
 }
