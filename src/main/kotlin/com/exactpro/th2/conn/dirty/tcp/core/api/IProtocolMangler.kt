@@ -18,10 +18,12 @@ package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.event.Event
 import io.netty.buffer.ByteBuf
+import javax.annotation.concurrent.ThreadSafe
 
 /**
  * Mangles protocol messages on a single [channel][IChannel]
  */
+@ThreadSafe
 interface IProtocolMangler : AutoCloseable {
     /**
      * This method is called after a corresponding channel has been opened (e.g. TCP connection is established).

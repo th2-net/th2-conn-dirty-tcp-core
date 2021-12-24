@@ -19,10 +19,12 @@ package com.exactpro.th2.conn.dirty.tcp.core.api
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import java.io.InputStream
+import javax.annotation.concurrent.ThreadSafe
 
 /**
  * Single mangler/handler context
  */
+@ThreadSafe
 interface IContext<T> {
     /**
      * Returns [channel][IChannel] linked to a mangler/handler

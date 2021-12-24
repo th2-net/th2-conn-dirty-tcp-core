@@ -20,10 +20,12 @@ import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode.HANDLE_AND_MANGLE
 import io.netty.buffer.ByteBuf
 import java.net.InetSocketAddress
+import javax.annotation.concurrent.ThreadSafe
 
 /**
  * Represents a single TCP connection
  */
+@ThreadSafe
 interface IChannel {
     /**
      * Returns current channel address

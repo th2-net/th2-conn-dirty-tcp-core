@@ -16,12 +16,17 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.SendChannel
+import kotlinx.coroutines.channels.trySendBlocking
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executor
-import java.util.concurrent.atomic.AtomicInteger
-import java.util.concurrent.atomic.AtomicReference
-import java.util.concurrent.locks.LockSupport
 
 /**
  * Executor which ensures that actions of a single stream are executed in their submission order.
@@ -36,9 +41,10 @@ class ActionStreamExecutor(
     private val executor: Executor,
     private val maxStreamSize: Int = 1000,
     private val onError: (stream: String, error: Throwable) -> Unit
-) {
+) : AutoCloseable {
     private val logger = KotlinLogging.logger {}
-    private val streams = ConcurrentHashMap<String, Stream>()
+    private val scope = CoroutineScope(executor.asCoroutineDispatcher())
+    private val streams = ConcurrentHashMap<String, SendChannel<Runnable>>()
 
     /**
      * Submits [action] for execution in the specified [stream].
@@ -56,48 +62,27 @@ class ActionStreamExecutor(
      * @param action action to execute in the stream
      */
     fun execute(stream: String, bounded: Boolean = true, action: Runnable) {
-        val stream = when (bounded) {
-            true -> streams.computeIfAbsent(stream) { Stream(stream, maxStreamSize) }
-            else -> streams.computeIfAbsent("$stream-unbounded", ::Stream)
-        }
+        val name = if (bounded) stream else "$stream-unbounded"
+        val size = if (bounded) maxStreamSize else Channel.UNLIMITED
 
-        if (!stream.offer(action)) {
-            logger.warn { "Stream is full: ${stream.name}" }
-            stream.put(action)
-            logger.debug { "Added action to stream: ${stream.name}" }
-        }
-    }
-
-    private inner class Stream(val name: String, val capacity: Int = Int.MAX_VALUE) {
-        private val tail = AtomicReference(NIL)
-        private val size = AtomicInteger()
-
-        fun put(action: Runnable) {
-            while (!offer(action)) LockSupport.parkNanos(1_000_000)
-        }
-
-        fun offer(action: Runnable): Boolean {
-            if (size.get() >= capacity) return false
-
-            size.incrementAndGet()
-
-            val next = AtomicReference(NOP)
-            val prev = tail.getAndSet(next)
-
-            val task = Runnable {
-                runCatching(action::run).recoverCatching { onError(name, it) }
-                size.decrementAndGet()
-                executor.execute(next.getAndSet(null))
+        val channel = streams.computeIfAbsent(name) {
+            Channel<Runnable>(size).apply {
+                scope.launch {
+                    while (isActive) {
+                        runCatching(receive()::run).onFailure { onError(name, it) }
+                    }
+                }.invokeOnCompletion {
+                    cancel()
+                }
             }
+        }
 
-            if (!prev.compareAndSet(NOP, task)) executor.execute(task)
-
-            return true
+        if (channel.trySend(action).isFailure) {
+            logger.debug { "Stream is full: $name" }
+            channel.trySendBlocking(action).getOrThrow()
+            logger.debug { "Added action to stream: $name" }
         }
     }
 
-    companion object {
-        private val NOP = Runnable {}
-        private val NIL = AtomicReference<Runnable>()
-    }
+    override fun close() = scope.cancel("Executor is being shutdown")
 }

@@ -82,6 +82,8 @@ class Microservice(
 
     private val actionExecutor = ActionStreamExecutor(executor) { stream, error ->
         onError("Failed to execute action in stream: $stream", error)
+    }.apply {
+        registerResource("stream-executor", ::close)
     }
 
     private val incomingBatcher = MessageBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->

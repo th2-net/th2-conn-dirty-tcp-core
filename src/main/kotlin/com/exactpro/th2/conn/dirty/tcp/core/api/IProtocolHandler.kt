@@ -17,10 +17,12 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import io.netty.buffer.ByteBuf
+import javax.annotation.concurrent.ThreadSafe
 
 /**
  * Handles protocol messages and events, maintains session on a single [channel][IChannel]
  */
+@ThreadSafe
 interface IProtocolHandler : AutoCloseable {
     /**
      * This method is called after a corresponding channel has been opened (e.g. TCP connection is established).
