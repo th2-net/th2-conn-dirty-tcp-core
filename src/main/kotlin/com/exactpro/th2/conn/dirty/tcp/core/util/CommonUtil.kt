@@ -40,6 +40,8 @@ import com.exactpro.th2.common.message.plusAssign
 import com.exactpro.th2.common.message.sequence
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.toJson
+import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory
 import com.google.protobuf.ByteString
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
@@ -141,8 +143,13 @@ val AnyMessage.sessionAlias: String
 
 inline fun <reified T> load(): T = ServiceLoader.load(T::class.java).toList().run {
     when {
-        isEmpty() -> if (null is T) null as T else error("No instances of ${T::class.simpleName}")
+        isEmpty() -> if (null is T) null as T
+        else if (T::class.simpleName == IProtocolManglerFactory::class.simpleName) {
+            val dummy = DummyManglerFactory()
+            dummy
+        }
+        else error("No instances of ${T::class.simpleName}")
         size == 1 -> this[0]
         else -> error("More than 1 instance of ${T::class.simpleName} has been found: $this")
     }
-}
+} as T
