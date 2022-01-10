@@ -29,7 +29,7 @@ fun ByteBuf.asExpandable(): ByteBuf = when (maxCapacity()) {
     else -> Unpooled.wrappedBuffer(this, Unpooled.buffer())
 }
 
-fun ByteBuf.requireReadable(fromIndex: Int, toIndex: Int) {
+private fun ByteBuf.requireReadable(fromIndex: Int, toIndex: Int) {
     require(fromIndex < toIndex) {
         "fromIndex must be less than toIndex: $fromIndex..$toIndex"
     }
@@ -39,11 +39,15 @@ fun ByteBuf.requireReadable(fromIndex: Int, toIndex: Int) {
     }
 }
 
-fun ByteBuf.requireReadable(index: Int) {
+private fun ByteBuf.requireReadable(index: Int) {
     require(index in readerIndex() until writerIndex()) {
         "Index is outside of readable bytes: $index"
     }
 }
+
+fun ByteBuf.isEmpty(): Boolean = readableBytes() == 0
+
+fun ByteBuf.isNotEmpty(): Boolean = !isEmpty()
 
 @JvmOverloads
 fun ByteBuf.indexOf(
@@ -67,6 +71,28 @@ fun ByteBuf.indexOf(
     toIndex: Int = writerIndex(),
     charset: Charset = UTF_8,
 ): Int = indexOf(value.toByteArray(charset), fromIndex, toIndex)
+
+@JvmOverloads
+fun ByteBuf.lastIndexOf(
+    value: ByteArray,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): Int {
+    requireReadable(fromIndex, toIndex)
+    val valueLength = value.size
+    val regionLength = toIndex - fromIndex
+    if (regionLength < valueLength) return -1
+    val factory = newKmpSearchProcessorFactory(value.reversedArray())
+    return forEachByteDesc(fromIndex, regionLength, factory.newSearchProcessor())
+}
+
+@JvmOverloads
+fun ByteBuf.lastIndexOf(
+    value: String,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    charset: Charset = UTF_8
+): Int = lastIndexOf(value.toByteArray(charset), fromIndex, toIndex)
 
 @JvmOverloads
 fun ByteBuf.contains(
@@ -132,18 +158,25 @@ fun ByteBuf.remove(fromIndex: Int, toIndex: Int): ByteBuf = apply {
     }
 }
 
+private inline fun ByteBuf.removeValue(
+    value: ByteArray,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    searchFunction: (value: ByteArray, fromIndex: Int, toIndex: Int) -> Int
+): Boolean {
+    requireReadable(fromIndex, toIndex)
+    val atIndex = searchFunction(value, fromIndex, toIndex)
+    if (atIndex < 0) return false
+    remove(atIndex, atIndex + value.size)
+    return true
+}
+
 @JvmOverloads
 fun ByteBuf.remove(
     value: ByteArray,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex()
-): Boolean {
-    requireReadable(fromIndex, toIndex)
-    val atIndex = indexOf(value, fromIndex, toIndex)
-    if (atIndex < 0) return false
-    remove(atIndex, atIndex + value.size)
-    return true
-}
+): Boolean = removeValue(value, fromIndex, toIndex, ::indexOf)
 
 @JvmOverloads
 fun ByteBuf.remove(
@@ -154,13 +187,36 @@ fun ByteBuf.remove(
 ): Boolean = remove(value.toByteArray(charset), fromIndex, toIndex)
 
 @JvmOverloads
+fun ByteBuf.removeLast(
+    value: ByteArray,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): Boolean = removeValue(value, fromIndex, toIndex, ::lastIndexOf)
+
+@JvmOverloads
+fun ByteBuf.removeLast(
+    value: String,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    charset: Charset = UTF_8
+): Boolean = removeLast(value.toByteArray(charset), fromIndex, toIndex)
+
+@JvmOverloads
 fun ByteBuf.removeAll(
     value: ByteArray,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex()
-): ByteBuf = apply {
-    @Suppress("ControlFlowWithEmptyBody")
-    while (remove(value, fromIndex, toIndex));
+): Boolean {
+    var toIndex = toIndex
+    val valueSize = value.size
+    var removed = false
+
+    while (removeLast(value, fromIndex, toIndex)) {
+        toIndex -= valueSize
+        removed = true
+    }
+
+    return removed
 }
 
 @JvmOverloads
@@ -169,20 +225,17 @@ fun ByteBuf.removeAll(
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
     charset: Charset = UTF_8
-): ByteBuf = apply {
-    @Suppress("ControlFlowWithEmptyBody")
-    while (remove(value, fromIndex.coerceAtLeast(readerIndex()), toIndex.coerceAtMost(writerIndex())));
-}
+): Boolean = removeAll(value.toByteArray(charset), fromIndex, toIndex)
 
-@JvmOverloads
-fun ByteBuf.replace(
+private inline fun ByteBuf.replaceValue(
     source: ByteArray,
     target: ByteArray,
     fromIndex: Int = readerIndex(),
-    toIndex: Int = writerIndex()
+    toIndex: Int = writerIndex(),
+    searchFunction: (value: ByteArray, fromIndex: Int, toIndex: Int) -> Int
 ): Boolean {
     val sizeDiff = source.size - target.size
-    val sourceIndex = indexOf(source, fromIndex, toIndex)
+    val sourceIndex = searchFunction(source, fromIndex, toIndex)
 
     when {
         sourceIndex < 0 -> return false
@@ -197,6 +250,14 @@ fun ByteBuf.replace(
 
 @JvmOverloads
 fun ByteBuf.replace(
+    source: ByteArray,
+    target: ByteArray,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): Boolean = replaceValue(source, target, fromIndex, toIndex, ::indexOf)
+
+@JvmOverloads
+fun ByteBuf.replace(
     source: String,
     target: String,
     fromIndex: Int = readerIndex(),
@@ -208,3 +269,135 @@ fun ByteBuf.replace(
     fromIndex,
     toIndex
 )
+
+@JvmOverloads
+fun ByteBuf.replaceLast(
+    source: ByteArray,
+    target: ByteArray,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): Boolean = replaceValue(source, target, fromIndex, toIndex, ::lastIndexOf)
+
+@JvmOverloads
+fun ByteBuf.replaceLast(
+    source: String,
+    target: String,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    charset: Charset = UTF_8
+): Boolean = replaceLast(
+    source.toByteArray(charset),
+    target.toByteArray(charset),
+    fromIndex,
+    toIndex
+)
+
+@JvmOverloads
+fun ByteBuf.replaceAll(
+    source: ByteArray,
+    target: ByteArray,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): Boolean {
+    var toIndex = toIndex
+    val valueSize = source.size
+    var replaced = false
+
+    while (replaceLast(source, target, fromIndex, toIndex)) {
+        toIndex -= valueSize
+        replaced = true
+    }
+
+    return replaced
+}
+
+@JvmOverloads
+fun ByteBuf.replaceAll(
+    source: String,
+    target: String,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    charset: Charset = UTF_8
+): Boolean = replaceAll(
+    source.toByteArray(charset),
+    target.toByteArray(charset),
+    fromIndex,
+    toIndex
+)
+
+fun ByteBuf.trimStart(
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    predicate: (Byte) -> Boolean = { it <= 32 }
+): ByteBuf = apply {
+    val startIndex = forEachByte(fromIndex, toIndex - fromIndex, predicate)
+    if (startIndex > fromIndex) remove(fromIndex, startIndex)
+}
+
+@JvmOverloads
+fun ByteBuf.trimStart(
+    vararg values: Byte,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): ByteBuf = trimStart(fromIndex, toIndex) { it in values }
+
+fun ByteBuf.trimEnd(
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    predicate: (Byte) -> Boolean = { it <= 32 }
+): ByteBuf = apply {
+    val endIndex = forEachByteDesc(fromIndex, toIndex - fromIndex, predicate)
+    if (endIndex < toIndex - 1) remove(endIndex + 1, toIndex)
+}
+
+@JvmOverloads
+fun ByteBuf.trimEnd(
+    vararg values: Byte,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): ByteBuf = trimEnd(fromIndex, toIndex) { it in values }
+
+fun ByteBuf.trim(
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    predicate: (Byte) -> Boolean = { it <= 32 }
+): ByteBuf = apply {
+    val regionLength = toIndex - fromIndex
+    val startIndex = forEachByte(fromIndex, regionLength, predicate)
+    val endIndex = forEachByteDesc(fromIndex, regionLength, predicate)
+    if (endIndex < toIndex - 1) remove(endIndex + 1, toIndex)
+    if (startIndex > fromIndex) remove(fromIndex, startIndex)
+}
+
+@JvmOverloads
+fun ByteBuf.trim(
+    vararg values: Byte,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): ByteBuf = trim(fromIndex, toIndex) { it in values }
+
+@JvmOverloads
+fun ByteBuf.padStart(
+    length: Int,
+    value: Byte = 0,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): ByteBuf = apply {
+    val currentLength = toIndex - fromIndex
+    if (currentLength >= length) return@apply
+    val padding = ByteArray(length - currentLength) { value }
+    insert(padding, fromIndex)
+}
+
+@JvmOverloads
+fun ByteBuf.padEnd(
+    length: Int,
+    value: Byte = 0,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): ByteBuf = apply {
+    val currentLength = toIndex - fromIndex
+    if (currentLength >= length) return@apply
+    val padding = ByteArray(length - currentLength) { value }
+    insert(padding, toIndex)
+}
