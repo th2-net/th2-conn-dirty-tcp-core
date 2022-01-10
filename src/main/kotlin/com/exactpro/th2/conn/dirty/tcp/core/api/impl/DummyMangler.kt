@@ -14,7 +14,10 @@ class DummyManglerFactory: IProtocolManglerFactory {
     }
 }
 
-class DummyManglerSettings: IProtocolManglerSettings
+class DummyManglerSettings: IProtocolManglerSettings{
+    var username: String = "username"
+    var password: String = "password"
+}
 
 class DummyMangler: IProtocolMangler{
     override fun onOutgoing(message: ByteBuf, metadata: Map<String, String>): Event? {
