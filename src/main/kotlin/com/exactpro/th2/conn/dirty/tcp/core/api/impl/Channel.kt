@@ -22,7 +22,7 @@ import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.conn.dirty.tcp.core.ActionStreamExecutor
+import com.exactpro.th2.conn.dirty.tcp.core.TaskSequencePool
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode.HANDLE_AND_MANGLE
@@ -56,11 +56,14 @@ class Channel(
     private val onEvent: (event: Event, parentEventId: EventID) -> Unit,
     private val onMessage: (RawMessage) -> Unit,
     private val eventLoopGroup: EventLoopGroup,
-    private val actionExecutor: ActionStreamExecutor,
+    sequencePool: TaskSequencePool,
     val parentEventId: EventID
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
     private val lock = ReentrantLock()
+    private val channelSequence = sequencePool.create("channel-events-$sessionAlias", Int.MAX_VALUE)
+    private val messageSequence = sequencePool.create("messages-$sessionAlias")
+    private val eventSequence = sequencePool.create("events-$sessionAlias")
     @Volatile private var reconnect = true
     @Volatile private var channel = createChannel(defaultAddress, defaultSecure)
 
@@ -187,19 +190,15 @@ class Channel(
         storeEvent(message.toErrorEvent(cause), parentEventId)
     }
 
-    private fun storeMessage(message: RawMessage) {
-        actionExecutor.execute("messages-$sessionAlias") { onMessage(message) }
-    }
+    private fun storeMessage(message: RawMessage) = messageSequence.execute { onMessage(message) }
 
-    private fun storeEvent(event: Event, parentEventId: EventID) {
-        actionExecutor.execute("events-$sessionAlias") { onEvent(event, parentEventId) }
-    }
+    private fun storeEvent(event: Event, parentEventId: EventID) = eventSequence.execute { onEvent(event, parentEventId) }
 
     private fun createChannel(address: InetSocketAddress, secure: Boolean) = TcpChannel(
         address,
         secure,
         eventLoopGroup,
-        { actionExecutor.execute("channel-events-$sessionAlias", false, it) },
+        channelSequence::execute,
         this
     )
 }

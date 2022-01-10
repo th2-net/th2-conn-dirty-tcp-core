@@ -80,9 +80,7 @@ class Microservice(
         }
     }
 
-    private val actionExecutor = ActionStreamExecutor(executor) { stream, error ->
-        onError("Failed to execute action in stream: $stream", error)
-    }.apply {
+    private val sequencePool = TaskSequencePool(executor).apply {
         registerResource("stream-executor", ::close)
     }
 
@@ -146,7 +144,7 @@ class Microservice(
             return
         }
 
-        actionExecutor.execute("send-$sessionAlias") {
+        sequencePool["send-$sessionAlias"].execute {
             val client = manager.open(sessionAlias, settings.autoStopAfter)
 
             rawMessage.runCatching(client::send).recoverCatching { cause ->
@@ -156,35 +154,38 @@ class Microservice(
     }
 
     private fun createChannel(session: SessionSettings): Channel {
-        val parentEventId = eventRouter.storeEvent(session.sessionAlias.toEvent(), rootEventId).id
+        val sessionAlias = session.sessionAlias
+        val parentEventId = eventRouter.storeEvent(sessionAlias.toEvent(), rootEventId).id
         val sendEvent: (Event) -> Unit = { eventRouter.storeEvent(it, parentEventId) }
 
         val handlerContext = Context(session.handler, readDictionary, sendEvent)
         val handler = handlerFactory.create(handlerContext).apply {
-            registerResource("handler-${session.sessionAlias}", ::close)
+            registerResource("handler-$sessionAlias", ::close)
         }
 
         val manglerContext = Context(session.mangler, readDictionary, sendEvent)
         val mangler = manglerFactory.create(manglerContext).apply {
-            registerResource("mangler-${session.sessionAlias}", ::close)
+            registerResource("mangler-$sessionAlias", ::close)
         }
 
         val channel = Channel(
             InetSocketAddress(session.host, session.port),
             session.secure,
-            session.sessionAlias,
+            sessionAlias,
             settings.reconnectDelay,
             handler,
             mangler,
             ::onEvent,
             ::onMessage,
             eventLoopGroup,
-            actionExecutor,
+            sequencePool,
             EventID.newBuilder().setId(parentEventId).build()
         )
 
         handlerContext.channel = channel
         manglerContext.channel = channel
+
+        sequencePool.create("send-$sessionAlias")
 
         return channel
     }
@@ -212,11 +213,6 @@ class Microservice(
     private fun onMessage(message: RawMessage) = when (message.direction) {
         FIRST -> incomingBatcher.onMessage(message)
         else -> outgoingBatcher.onMessage(message)
-    }
-
-    private fun onError(error: String, cause: Throwable? = null) {
-        logger.error(error, cause)
-        eventRouter.storeEvent(error.toErrorEvent(cause), errorEventId)
     }
 
     private fun onError(error: String, message: AnyMessage, cause: Throwable? = null) {

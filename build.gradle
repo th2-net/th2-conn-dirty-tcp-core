@@ -175,11 +175,11 @@ dependencies {
 
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-reflect', version: kotlin_version
-    implementation group: 'org.jetbrains.kotlinx', name: 'kotlinx-coroutines-core', version: '1.5.2'
 
     implementation group: 'com.fasterxml.jackson.module', name: 'jackson-module-kotlin', version: '2.11.2'
     implementation group: 'io.github.microutils', name: 'kotlin-logging', version: '1.7.9'
     implementation group: 'io.netty', name: 'netty-all', version: '4.1.70.Final'
+    implementation group: 'org.jctools', name: 'jctools-core', version: '3.3.0'
 
     testImplementation group: 'org.jetbrains.kotlin', name: 'kotlin-test-junit5', version: kotlin_version
 }
