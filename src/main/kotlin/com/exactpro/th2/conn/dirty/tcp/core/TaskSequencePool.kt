@@ -89,6 +89,7 @@ class TaskSequencePool(private val executor: Executor) : AutoCloseable {
 
         override fun close() {
             isOpen = false
+            queue.clear()
         }
     }
 
@@ -110,7 +111,6 @@ class TaskSequencePool(private val executor: Executor) : AutoCloseable {
         YIELD {
             override fun await(cycles: Int) = Thread.yield()
         },
-
         SLEEP {
             override fun await(cycles: Int) = Thread.sleep(1)
         },
