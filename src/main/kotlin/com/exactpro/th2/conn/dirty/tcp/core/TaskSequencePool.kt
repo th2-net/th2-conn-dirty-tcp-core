@@ -24,6 +24,7 @@ import java.util.concurrent.Callable
 import java.util.concurrent.Executor
 import java.util.concurrent.Future
 import java.util.concurrent.FutureTask
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicInteger
 
 class TaskSequencePool(private val executor: Executor) : AutoCloseable {
@@ -66,11 +67,19 @@ class TaskSequencePool(private val executor: Executor) : AutoCloseable {
             if (size.get() >= capacity || !queue.offer(task)) return false
 
             when (size.incrementAndGet()) {
-                1 -> executor.execute(this)
+                1 -> schedule()
                 capacity -> LOGGER.trace { "Queue is full: $name" }
             }
 
             return true
+        }
+
+        private fun schedule() = try {
+            executor.execute(this)
+        } catch (e: RejectedExecutionException) {
+            LOGGER.error(e) { "Queue consumer task has been rejected: $name" }
+            close()
+            throw e
         }
 
         override fun run() {
@@ -89,7 +98,7 @@ class TaskSequencePool(private val executor: Executor) : AutoCloseable {
 
                 when {
                     size.decrementAndGet() == 0 -> break
-                    thread.isInterrupted -> executor.execute(this)
+                    thread.isInterrupted -> schedule()
                 }
             }
         }
