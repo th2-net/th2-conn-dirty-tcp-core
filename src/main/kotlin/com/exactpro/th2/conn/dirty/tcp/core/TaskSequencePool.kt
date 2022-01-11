@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -74,15 +74,22 @@ class TaskSequencePool(private val executor: Executor) : AutoCloseable {
         }
 
         override fun run() {
+            val thread = Thread.currentThread()
+
             while (isOpen) {
                 try {
                     queue.poll().run()
                 } catch (e: Error) {
                     throw e
+                } catch (e: InterruptedException) {
+                    thread.interrupt()
                 } catch (t: Throwable) {
                     LOGGER.error(t) { "Failed to execute task from queue: $name" }
-                } finally {
-                    if (size.decrementAndGet() == 0) break
+                }
+
+                when {
+                    size.decrementAndGet() == 0 -> break
+                    thread.isInterrupted -> executor.execute(this)
                 }
             }
         }
