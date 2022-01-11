@@ -42,8 +42,9 @@ import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.channel.EventLoopGroup
 import mu.KotlinLogging
 import java.net.InetSocketAddress
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 
 class Channel(
@@ -60,7 +61,7 @@ class Channel(
     val parentEventId: EventID
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
-    private val lock = ReentrantLock()
+    private val lock = ReentrantReadWriteLock()
     private val channelSequence = sequencePool.create("channel-events-$sessionAlias", Int.MAX_VALUE)
     private val messageSequence = sequencePool.create("messages-$sessionAlias")
     private val eventSequence = sequencePool.create("events-$sessionAlias")
@@ -81,7 +82,7 @@ class Channel(
     override fun open(address: InetSocketAddress, secure: Boolean) {
         reconnect = true
 
-        lock.withLock {
+        lock.write {
             check(!isOpen) { "Already connected to: ${channel.address}" }
 
             if (address != channel.address || secure != channel.isSecure) {
@@ -116,7 +117,7 @@ class Channel(
         metadata: Map<String, String> = mapOf(),
         mode: SendMode = HANDLE_AND_MANGLE,
         parentEventId: EventID? = null
-    ): MessageID = lock.withLock {
+    ): MessageID = lock.read {
         if (!isOpen) open()
 
         val buffer = message.asExpandable()
@@ -136,7 +137,7 @@ class Channel(
     override fun close() {
         reconnect = false
 
-        lock.withLock {
+        lock.write {
             if (isOpen) {
                 onInfo("Disconnecting from: $address")
 

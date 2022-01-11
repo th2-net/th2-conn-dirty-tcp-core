@@ -29,8 +29,9 @@ import io.netty.handler.ssl.SslHandler
 import mu.KotlinLogging
 import java.net.InetSocketAddress
 import java.util.concurrent.Executor
-import java.util.concurrent.locks.ReentrantLock
-import kotlin.concurrent.withLock
+import java.util.concurrent.locks.ReentrantReadWriteLock
+import kotlin.concurrent.read
+import kotlin.concurrent.write
 
 class TcpChannel(
     val address: InetSocketAddress,
@@ -40,7 +41,7 @@ class TcpChannel(
     handler: ITcpChannelHandler
 ) {
     private val logger = KotlinLogging.logger {}
-    private val lock = ReentrantLock()
+    private val lock = ReentrantReadWriteLock()
     private lateinit var channel: Channel
     private val bootstrap = Bootstrap().apply {
         group(group)
@@ -61,21 +62,21 @@ class TcpChannel(
     }
 
     val isOpen: Boolean
-        get() = lock.withLock { ::channel.isInitialized && channel.isActive }
+        get() = lock.read { ::channel.isInitialized && channel.isActive }
 
-    fun open() = lock.withLock {
+    fun open() = lock.write {
         when (isOpen) {
             true -> logger.warn { "Already connected to: $address" }
             else -> channel = bootstrap.connect().sync().channel()
         }
     }
 
-    fun send(data: ByteBuf) = lock.withLock<Unit> {
+    fun send(data: ByteBuf) = lock.read<Unit> {
         check(isOpen) { "Cannot send message. Not connected to: $address" }
         channel.writeAndFlush(data).sync()
     }
 
-    fun close() = lock.withLock<Unit> {
+    fun close() = lock.write<Unit> {
         when (isOpen) {
             false -> logger.warn { "Not connected to: $address" }
             else -> channel.close().sync()
