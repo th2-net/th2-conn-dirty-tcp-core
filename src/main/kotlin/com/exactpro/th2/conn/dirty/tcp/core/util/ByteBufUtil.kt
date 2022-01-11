@@ -109,6 +109,63 @@ fun ByteBuf.contains(
     charset: Charset = UTF_8
 ): Boolean = contains(value.toByteArray(charset), fromIndex, toIndex)
 
+fun ByteBuf.matches(value: ByteArray, atIndex: Int): Boolean {
+    requireReadable(atIndex)
+    if (atIndex + value.size > writerIndex()) return false
+
+    value.forEachIndexed { index, byte ->
+        if (getByte(index + atIndex) != byte) return false
+    }
+
+    return true
+}
+
+@JvmOverloads
+fun ByteBuf.matches(
+    value: String,
+    atIndex: Int,
+    charset: Charset = UTF_8
+): Boolean = matches(value.toByteArray(charset), atIndex)
+
+@JvmOverloads
+fun ByteBuf.startsWith(
+    value: ByteArray,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): Boolean {
+    requireReadable(fromIndex, toIndex)
+    if (toIndex - fromIndex < value.size) return false
+    return matches(value, fromIndex)
+}
+
+@JvmOverloads
+fun ByteBuf.startsWith(
+    value: String,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    charset: Charset = UTF_8,
+): Boolean = startsWith(value.toByteArray(charset), fromIndex, toIndex)
+
+@JvmOverloads
+fun ByteBuf.endsWith(
+    value: ByteArray,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex()
+): Boolean {
+    requireReadable(fromIndex, toIndex)
+    val valueLength = value.size
+    if (toIndex - fromIndex < valueLength) return false
+    return matches(value, toIndex - valueLength)
+}
+
+@JvmOverloads
+fun ByteBuf.endsWith(
+    value: String,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    charset: Charset = UTF_8
+): Boolean = endsWith(value.toByteArray(charset), fromIndex, toIndex)
+
 private fun ByteBuf.shift(fromIndex: Int, shiftSize: Int) = apply {
     requireReadable(fromIndex)
     require(shiftSize <= maxWritableBytes()) { "Not enough free space to shift $shiftSize bytes: ${maxWritableBytes()}" }
