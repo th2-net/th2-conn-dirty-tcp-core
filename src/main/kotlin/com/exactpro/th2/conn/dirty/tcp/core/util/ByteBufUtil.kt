@@ -32,7 +32,7 @@ fun ByteBuf.asExpandable(): ByteBuf = when (maxCapacity()) {
     else -> Unpooled.wrappedBuffer(this, Unpooled.buffer())
 }
 
-private fun ByteBuf.requireReadable(fromIndex: Int, toIndex: Int) {
+fun ByteBuf.requireReadable(fromIndex: Int, toIndex: Int) {
     require(fromIndex < toIndex) {
         "fromIndex must be less than toIndex: $fromIndex..$toIndex"
     }
@@ -42,7 +42,7 @@ private fun ByteBuf.requireReadable(fromIndex: Int, toIndex: Int) {
     }
 }
 
-private fun ByteBuf.requireReadable(index: Int) {
+fun ByteBuf.requireReadable(index: Int) {
     require(index in readerIndex() until writerIndex()) {
         "Index is outside of readable bytes: $index"
     }
@@ -102,7 +102,7 @@ fun ByteBuf.contains(
     value: ByteArray,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex()
-): Boolean = indexOf(value) >= 0
+): Boolean = indexOf(value, fromIndex, toIndex) >= 0
 
 @JvmOverloads
 fun ByteBuf.contains(
@@ -218,7 +218,7 @@ fun ByteBuf.remove(fromIndex: Int, toIndex: Int): ByteBuf = apply {
     }
 }
 
-private inline fun ByteBuf.removeValue(
+private inline fun ByteBuf.remove(
     value: ByteArray,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
@@ -236,7 +236,7 @@ fun ByteBuf.remove(
     value: ByteArray,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex()
-): Boolean = removeValue(value, fromIndex, toIndex, ::indexOf)
+): Boolean = remove(value, fromIndex, toIndex, ::indexOf)
 
 @JvmOverloads
 fun ByteBuf.remove(
@@ -251,7 +251,7 @@ fun ByteBuf.removeLast(
     value: ByteArray,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex()
-): Boolean = removeValue(value, fromIndex, toIndex, ::lastIndexOf)
+): Boolean = remove(value, fromIndex, toIndex, ::lastIndexOf)
 
 @JvmOverloads
 fun ByteBuf.removeLast(
@@ -287,23 +287,43 @@ fun ByteBuf.removeAll(
     charset: Charset = UTF_8
 ): Boolean = removeAll(value.toByteArray(charset), fromIndex, toIndex)
 
-private inline fun ByteBuf.replaceValue(
+fun ByteBuf.replace(
+    fromIndex: Int,
+    toIndex: Int,
+    value: ByteArray
+): ByteBuf = apply {
+    requireReadable(fromIndex, toIndex)
+    val lengthDiff = (toIndex - fromIndex) - value.size
+
+    when {
+        lengthDiff < 0 -> shift(fromIndex, -lengthDiff)
+        lengthDiff > 0 -> remove(fromIndex, fromIndex + lengthDiff)
+    }
+
+    setBytes(fromIndex, value)
+}
+
+@JvmOverloads
+fun ByteBuf.replace(
+    fromIndex: Int,
+    toIndex: Int,
+    value: String,
+    charset: Charset = UTF_8
+): ByteBuf = replace(fromIndex, toIndex, value.toByteArray(charset))
+
+private inline fun ByteBuf.replace(
     source: ByteArray,
     target: ByteArray,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
     searchFunction: (value: ByteArray, fromIndex: Int, toIndex: Int) -> Int
 ): Boolean {
-    val sizeDiff = source.size - target.size
     val sourceIndex = searchFunction(source, fromIndex, toIndex)
 
     when {
         sourceIndex < 0 -> return false
-        sizeDiff < 0 -> shift(sourceIndex, -sizeDiff)
-        sizeDiff > 0 -> remove(sourceIndex, sourceIndex + sizeDiff)
+        else -> replace(sourceIndex, sourceIndex + source.size, target)
     }
-
-    setBytes(sourceIndex, target)
 
     return true
 }
@@ -314,7 +334,7 @@ fun ByteBuf.replace(
     target: ByteArray,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex()
-): Boolean = replaceValue(source, target, fromIndex, toIndex, ::indexOf)
+): Boolean = replace(source, target, fromIndex, toIndex, ::indexOf)
 
 @JvmOverloads
 fun ByteBuf.replace(
@@ -336,7 +356,7 @@ fun ByteBuf.replaceLast(
     target: ByteArray,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex()
-): Boolean = replaceValue(source, target, fromIndex, toIndex, ::lastIndexOf)
+): Boolean = replace(source, target, fromIndex, toIndex, ::lastIndexOf)
 
 @JvmOverloads
 fun ByteBuf.replaceLast(
