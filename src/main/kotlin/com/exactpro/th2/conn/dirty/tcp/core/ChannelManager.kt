@@ -31,7 +31,7 @@ class ChannelManager(
 
     fun open(sessionAlias: String, closeAfter: Long = 0) = getChannel(sessionAlias).apply {
         synchronized(this) {
-            if (!isOpen) return@apply else open()
+            if (isOpen) return@apply else open()
             if (closeAfter <= 0) return@apply
             stopFutures[sessionAlias] = executor.schedule(::close, closeAfter, MILLISECONDS)
         }
