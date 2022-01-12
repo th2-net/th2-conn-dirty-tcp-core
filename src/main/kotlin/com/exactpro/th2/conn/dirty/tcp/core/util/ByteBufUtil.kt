@@ -24,6 +24,9 @@ import io.netty.buffer.search.AbstractSearchProcessorFactory.newKmpSearchProcess
 import java.nio.charset.Charset
 import kotlin.text.Charsets.UTF_8
 
+private val EMPTY_ARRAY = ByteArray(0)
+private const val EMPTY_STRING = ""
+
 fun ByteBuf.asExpandable(): ByteBuf = when (maxCapacity()) {
     Int.MAX_VALUE -> this
     else -> Unpooled.wrappedBuffer(this, Unpooled.buffer())
@@ -457,4 +460,23 @@ fun ByteBuf.padEnd(
     if (currentLength >= length) return@apply
     val padding = ByteArray(length - currentLength) { value }
     insert(padding, toIndex)
+}
+
+fun ByteBuf.subsequence(
+    fromIndex: Int,
+    toIndex: Int = writerIndex()
+): ByteArray {
+    requireReadable(fromIndex, toIndex)
+    val length = toIndex - fromIndex
+    if (length == 0) return EMPTY_ARRAY
+    return ByteArray(length).apply { getBytes(fromIndex, this) }
+}
+
+fun ByteBuf.substring(
+    fromIndex: Int,
+    toIndex: Int = writerIndex(),
+    charset: Charset = UTF_8
+): String = when (val value = subsequence(fromIndex, toIndex)) {
+    EMPTY_ARRAY -> EMPTY_STRING
+    else -> value.toString(charset)
 }
