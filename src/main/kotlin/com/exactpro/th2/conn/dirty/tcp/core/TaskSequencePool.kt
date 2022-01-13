@@ -67,14 +67,14 @@ class TaskSequencePool(private val executor: Executor) : AutoCloseable {
             if (size.get() >= capacity || !queue.offer(task)) return false
 
             when (size.incrementAndGet()) {
-                1 -> schedule()
+                1 -> consume()
                 capacity -> LOGGER.trace { "Queue is full: $name" }
             }
 
             return true
         }
 
-        private fun schedule() = try {
+        private fun consume() = try {
             executor.execute(this)
         } catch (e: RejectedExecutionException) {
             LOGGER.error(e) { "Queue consumer task has been rejected: $name" }
@@ -98,7 +98,7 @@ class TaskSequencePool(private val executor: Executor) : AutoCloseable {
 
                 when {
                     size.decrementAndGet() == 0 -> break
-                    thread.isInterrupted -> schedule()
+                    thread.isInterrupted -> consume()
                 }
             }
         }

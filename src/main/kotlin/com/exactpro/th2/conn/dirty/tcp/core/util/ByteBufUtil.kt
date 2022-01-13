@@ -33,8 +33,8 @@ fun ByteBuf.asExpandable(): ByteBuf = when (maxCapacity()) {
 }
 
 fun ByteBuf.requireReadable(fromIndex: Int, toIndex: Int) {
-    require(fromIndex < toIndex) {
-        "fromIndex must be less than toIndex: $fromIndex..$toIndex"
+    require(fromIndex <= toIndex) {
+        "fromIndex is greater than toIndex: $fromIndex..$toIndex"
     }
 
     require(fromIndex >= readerIndex() && toIndex <= writerIndex()) {
@@ -51,6 +51,16 @@ fun ByteBuf.requireReadable(index: Int) {
 fun ByteBuf.isEmpty(): Boolean = readableBytes() == 0
 
 fun ByteBuf.isNotEmpty(): Boolean = !isEmpty()
+
+@JvmOverloads
+fun ByteBuf.indexOf(
+    value: Byte,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+): Int {
+    requireReadable(fromIndex, toIndex)
+    return indexOf(fromIndex, toIndex, value)
+}
 
 @JvmOverloads
 fun ByteBuf.indexOf(
@@ -74,6 +84,16 @@ fun ByteBuf.indexOf(
     toIndex: Int = writerIndex(),
     charset: Charset = UTF_8,
 ): Int = indexOf(value.toByteArray(charset), fromIndex, toIndex)
+
+@JvmOverloads
+fun ByteBuf.lastIndexOf(
+    value: Byte,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+): Int {
+    requireReadable(fromIndex, toIndex)
+    return indexOf(toIndex, fromIndex, value)
+}
 
 @JvmOverloads
 fun ByteBuf.lastIndexOf(
@@ -319,12 +339,8 @@ private inline fun ByteBuf.replace(
     searchFunction: (value: ByteArray, fromIndex: Int, toIndex: Int) -> Int
 ): Boolean {
     val sourceIndex = searchFunction(source, fromIndex, toIndex)
-
-    when {
-        sourceIndex < 0 -> return false
-        else -> replace(sourceIndex, sourceIndex + source.size, target)
-    }
-
+    if (sourceIndex < 0) return false
+    replace(sourceIndex, sourceIndex + source.size, target)
     return true
 }
 
@@ -499,4 +515,38 @@ fun ByteBuf.substring(
 ): String = when (val value = subsequence(fromIndex, toIndex)) {
     EMPTY_ARRAY -> EMPTY_STRING
     else -> value.toString(charset)
+}
+
+inline fun ByteBuf.forEachSubsequence(
+    findDelimiter: ByteBuf.(startIndex: Int, endIndex: Int) -> Pair<Int, Int>?,
+    limit: Int = Int.MAX_VALUE,
+    reverse: Boolean = false,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    onEachSequence: ByteBuf.(startIndex: Int, endIndex: Int) -> Unit
+) {
+    requireReadable(fromIndex, toIndex)
+    require(limit > 0) { "Limit is less or equal to zero: $limit" }
+
+    var fromIndex = fromIndex
+    var toIndex = toIndex
+    var counter = 0
+
+    if (reverse) {
+        while (fromIndex <= toIndex && ++counter <= limit) {
+            val (startIndex, endIndex) = findDelimiter(fromIndex, toIndex) ?: (fromIndex - 1 to fromIndex)
+            onEachSequence(endIndex, toIndex)
+            toIndex = startIndex
+        }
+    } else {
+        while (fromIndex <= toIndex && ++counter <= limit) {
+            val (startIndex, endIndex) = findDelimiter(fromIndex, toIndex) ?: (toIndex to toIndex + 1)
+            onEachSequence(fromIndex, startIndex)
+            fromIndex = endIndex
+        }
+    }
+
+    if (fromIndex <= toIndex) {
+        onEachSequence(fromIndex, toIndex)
+    }
 }
