@@ -192,16 +192,8 @@ fun ByteBuf.endsWith(
 private fun ByteBuf.shift(fromIndex: Int, shiftSize: Int) = apply {
     requireReadable(fromIndex)
     require(shiftSize <= maxWritableBytes()) { "Not enough free space to shift $shiftSize bytes: ${maxWritableBytes()}" }
-
-    val readerIndex = readerIndex()
-    val writerIndex = writerIndex()
-
-    if (fromIndex == readerIndex && readerIndex >= shiftSize) {
-        readerIndex(readerIndex - shiftSize)
-        return@apply
-    }
-
     ensureWritable(shiftSize)
+    val writerIndex = writerIndex()
     setBytes(fromIndex + shiftSize, copy(fromIndex, writerIndex - fromIndex))
     writerIndex(writerIndex + shiftSize)
 }
@@ -228,9 +220,8 @@ fun ByteBuf.insert(
 fun ByteBuf.remove(fromIndex: Int, toIndex: Int): ByteBuf = apply {
     requireReadable(fromIndex, toIndex)
 
-    when {
-        fromIndex == readerIndex() -> readerIndex(toIndex)
-        toIndex == writerIndex() -> writerIndex(fromIndex)
+    when (toIndex) {
+        writerIndex() -> writerIndex(fromIndex)
         else -> {
             setBytes(fromIndex, slice(toIndex, writerIndex() - toIndex))
             writerIndex(writerIndex() - (toIndex - fromIndex))
@@ -313,6 +304,12 @@ fun ByteBuf.replace(
     value: ByteArray
 ): ByteBuf = apply {
     requireReadable(fromIndex, toIndex)
+
+    if (fromIndex == toIndex) {
+        insert(value, fromIndex)
+        return@apply
+    }
+
     val lengthDiff = (toIndex - fromIndex) - value.size
 
     when {
@@ -421,6 +418,7 @@ fun ByteBuf.replaceAll(
     toIndex
 )
 
+@JvmOverloads
 fun ByteBuf.trimStart(
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
@@ -437,6 +435,7 @@ fun ByteBuf.trimStart(
     toIndex: Int = writerIndex()
 ): ByteBuf = trimStart(fromIndex, toIndex) { it in values }
 
+@JvmOverloads
 fun ByteBuf.trimEnd(
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
@@ -453,6 +452,7 @@ fun ByteBuf.trimEnd(
     toIndex: Int = writerIndex()
 ): ByteBuf = trimEnd(fromIndex, toIndex) { it in values }
 
+@JvmOverloads
 fun ByteBuf.trim(
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
@@ -498,6 +498,7 @@ fun ByteBuf.padEnd(
     insert(padding, toIndex)
 }
 
+@JvmOverloads
 fun ByteBuf.subsequence(
     fromIndex: Int,
     toIndex: Int = writerIndex()
@@ -508,6 +509,7 @@ fun ByteBuf.subsequence(
     return ByteArray(length).apply { getBytes(fromIndex, this) }
 }
 
+@JvmOverloads
 fun ByteBuf.substring(
     fromIndex: Int,
     toIndex: Int = writerIndex(),
@@ -517,36 +519,120 @@ fun ByteBuf.substring(
     else -> value.toString(charset)
 }
 
+@JvmOverloads
 inline fun ByteBuf.forEachSubsequence(
-    findDelimiter: ByteBuf.(startIndex: Int, endIndex: Int) -> Pair<Int, Int>?,
-    limit: Int = Int.MAX_VALUE,
+    nextDelimiter: ByteBuf.(startIndex: Int, endIndex: Int) -> Pair<Int, Int>?,
     reverse: Boolean = false,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
     onEachSequence: ByteBuf.(startIndex: Int, endIndex: Int) -> Unit
 ) {
     requireReadable(fromIndex, toIndex)
-    require(limit > 0) { "Limit is less or equal to zero: $limit" }
 
     var fromIndex = fromIndex
     var toIndex = toIndex
-    var counter = 0
 
     if (reverse) {
-        while (fromIndex <= toIndex && ++counter <= limit) {
-            val (startIndex, endIndex) = findDelimiter(fromIndex, toIndex) ?: (fromIndex - 1 to fromIndex)
+        while (fromIndex <= toIndex) {
+            val (startIndex, endIndex) = nextDelimiter(fromIndex, toIndex) ?: (fromIndex - 1 to fromIndex)
+            val readerIndex = readerIndex()
             onEachSequence(endIndex, toIndex)
-            toIndex = startIndex
+            val indexDiff = readerIndex() - readerIndex
+            toIndex = startIndex.coerceAtMost(writerIndex())
+            fromIndex += indexDiff
         }
     } else {
-        while (fromIndex <= toIndex && ++counter <= limit) {
-            val (startIndex, endIndex) = findDelimiter(fromIndex, toIndex) ?: (toIndex to toIndex + 1)
+        while (fromIndex <= toIndex) {
+            val (startIndex, endIndex) = nextDelimiter(fromIndex, toIndex) ?: (toIndex to toIndex + 1)
+            val writerIndex = writerIndex()
             onEachSequence(fromIndex, startIndex)
-            fromIndex = endIndex
+            val indexDiff = writerIndex() - writerIndex
+            toIndex += indexDiff
+            fromIndex = (endIndex + indexDiff).coerceAtLeast(readerIndex())
         }
     }
-
-    if (fromIndex <= toIndex) {
-        onEachSequence(fromIndex, toIndex)
-    }
 }
+
+@JvmOverloads
+inline fun ByteBuf.forEachSubsequence(
+    delimiter: Byte,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    onEachSequence: ByteBuf.(startIndex: Int, endIndex: Int) -> Unit
+) = forEachSubsequence(
+    { from, to -> indexOf(delimiter, from, to).let { if (it < 0) null else it to (it + 1) } },
+    false,
+    fromIndex,
+    toIndex,
+    onEachSequence
+)
+
+@JvmOverloads
+inline fun ByteBuf.forEachSubsequence(
+    delimiter: ByteArray,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    onEachSequence: ByteBuf.(startIndex: Int, endIndex: Int) -> Unit
+) = forEachSubsequence(
+    { from, to -> indexOf(delimiter, from, to).let { if (it < 0) null else it to (it + 1) } },
+    false,
+    fromIndex,
+    toIndex,
+    onEachSequence
+)
+
+@JvmOverloads
+inline fun ByteBuf.forEachSubsequence(
+    delimiter: String,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    charset: Charset = UTF_8,
+    onEachSequence: ByteBuf.(startIndex: Int, endIndex: Int) -> Unit
+) = forEachSubsequence(
+    delimiter.toByteArray(charset),
+    fromIndex,
+    toIndex,
+    onEachSequence
+)
+
+@JvmOverloads
+inline fun ByteBuf.reverseForEachSubsequence(
+    delimiter: Byte,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    onEachSequence: ByteBuf.(startIndex: Int, endIndex: Int) -> Unit
+) = forEachSubsequence(
+    { from, to -> lastIndexOf(delimiter, from, to).let { if (it < 0) null else it to (it + 1) } },
+    true,
+    fromIndex,
+    toIndex,
+    onEachSequence
+)
+
+@JvmOverloads
+inline fun ByteBuf.reverseForEachSubsequence(
+    delimiter: ByteArray,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    onEachSequence: ByteBuf.(startIndex: Int, endIndex: Int) -> Unit
+) = forEachSubsequence(
+    { from, to -> lastIndexOf(delimiter, from, to).let { if (it < 0) null else it to (it + 1) } },
+    true,
+    fromIndex,
+    toIndex,
+    onEachSequence
+)
+
+@JvmOverloads
+inline fun ByteBuf.reverseForEachSubsequence(
+    delimiter: String,
+    fromIndex: Int = readerIndex(),
+    toIndex: Int = writerIndex(),
+    charset: Charset = UTF_8,
+    onEachSequence: ByteBuf.(startIndex: Int, endIndex: Int) -> Unit
+) = reverseForEachSubsequence(
+    delimiter.toByteArray(charset),
+    fromIndex,
+    toIndex,
+    onEachSequence
+)
