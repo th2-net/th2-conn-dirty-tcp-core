@@ -24,11 +24,10 @@ import io.netty.buffer.search.AbstractSearchProcessorFactory.newKmpSearchProcess
 import java.nio.charset.Charset
 import kotlin.text.Charsets.UTF_8
 
-private val EMPTY_ARRAY = ByteArray(0)
-private const val EMPTY_STRING = ""
+val EMPTY_ARRAY = ByteArray(0)
+const val EMPTY_STRING = ""
 
-private fun Int.mapZeroOrNegative(toValue: Int) = if (this <= 0) toValue else this
-private fun Int.mapNegative(toValue: Int): Int = if (this < 0) toValue else this
+fun regionLength(fromIndex: Int, toIndex: Int): Int = toIndex - fromIndex
 
 fun ByteBuf.asExpandable(): ByteBuf = when {
     !isReadOnly && maxCapacity() == Int.MAX_VALUE -> this
@@ -36,8 +35,8 @@ fun ByteBuf.asExpandable(): ByteBuf = when {
 }
 
 fun ByteBuf.requireReadable(fromIndex: Int, toIndex: Int) {
-    require(fromIndex < toIndex) {
-        "fromIndex must be less than toIndex: $fromIndex..$toIndex"
+    require(fromIndex <= toIndex) {
+        "fromIndex is greater than toIndex: $fromIndex..$toIndex"
     }
 
     require(fromIndex >= readerIndex() && toIndex <= writerIndex()) {
@@ -81,7 +80,7 @@ fun ByteBuf.indexOf(
 ): Int {
     requireReadable(fromIndex, toIndex)
     val valueLength = value.size
-    val regionLength = toIndex - fromIndex
+    val regionLength = regionLength(fromIndex, toIndex)
     if (regionLength < valueLength) return -1
     val factory = newKmpSearchProcessorFactory(value)
     val indexOf = forEachByte(fromIndex, regionLength, factory.newSearchProcessor())
@@ -114,7 +113,7 @@ fun ByteBuf.lastIndexOf(
 ): Int {
     requireReadable(fromIndex, toIndex)
     val valueLength = value.size
-    val regionLength = toIndex - fromIndex
+    val regionLength = regionLength(fromIndex, toIndex)
     if (regionLength < valueLength) return -1
     val factory = newKmpSearchProcessorFactory(value.reversedArray())
     return forEachByteDesc(fromIndex, regionLength, factory.newSearchProcessor())
@@ -175,6 +174,7 @@ fun ByteBuf.startsWith(
     toIndex: Int = writerIndex()
 ): Boolean {
     requireReadable(fromIndex, toIndex)
+    if (regionLength(fromIndex, toIndex) < 1) return false
     return this[fromIndex] == value
 }
 
@@ -185,7 +185,7 @@ fun ByteBuf.startsWith(
     toIndex: Int = writerIndex()
 ): Boolean {
     requireReadable(fromIndex, toIndex)
-    if (toIndex - fromIndex < value.size) return false
+    if (regionLength(fromIndex, toIndex) < value.size) return false
     return matches(value, fromIndex)
 }
 
@@ -204,6 +204,7 @@ fun ByteBuf.endsWith(
     toIndex: Int = writerIndex()
 ): Boolean {
     requireReadable(fromIndex, toIndex)
+    if (regionLength(fromIndex, toIndex) < 1) return false
     return this[toIndex - 1] == value
 }
 
@@ -215,7 +216,7 @@ fun ByteBuf.endsWith(
 ): Boolean {
     requireReadable(fromIndex, toIndex)
     val valueLength = value.size
-    if (toIndex - fromIndex < valueLength) return false
+    if (regionLength(fromIndex, toIndex) < valueLength) return false
     return matches(value, toIndex - valueLength)
 }
 
@@ -333,12 +334,14 @@ fun ByteBuf.bytesAfterLast(
 
 private fun ByteBuf.shift(fromIndex: Int, shiftSize: Int) = apply {
     requireReadable(fromIndex)
-    require(shiftSize > 0) { "Shift size is less or equal to zero: $shiftSize" }
+    if (shiftSize <= 0) return@apply
     require(shiftSize <= maxWritableBytes()) { "Not enough free space to shift $shiftSize bytes: ${maxWritableBytes()}" }
     ensureWritable(shiftSize)
     setBytes(fromIndex + shiftSize, copy(fromIndex, writerIndex() - fromIndex))
     shiftWriterIndex(shiftSize)
 }
+
+fun ByteBuf.insert(value: Byte, atIndex: Int): ByteBuf = insert(byteArrayOf(value), atIndex)
 
 fun ByteBuf.insert(value: ByteArray, atIndex: Int): ByteBuf = apply {
     val valueSize = value.size
@@ -363,10 +366,11 @@ fun ByteBuf.remove(fromIndex: Int, toIndex: Int): ByteBuf = apply {
     requireReadable(fromIndex, toIndex)
 
     when (toIndex) {
+        fromIndex -> return@apply
         writerIndex() -> writerIndex(fromIndex)
         else -> {
             setBytes(fromIndex, slice(toIndex, writerIndex() - toIndex))
-            shiftWriterIndex(-(toIndex - fromIndex))
+            shiftWriterIndex(-regionLength(fromIndex, toIndex))
         }
     }
 }
@@ -447,7 +451,11 @@ fun ByteBuf.replace(
 ): ByteBuf = apply {
     requireReadable(fromIndex, toIndex)
 
-    val lengthDiff = (toIndex - fromIndex) - value.size
+    if (fromIndex == toIndex) {
+        return insert(value, fromIndex)
+    }
+
+    val lengthDiff = regionLength(fromIndex, toIndex) - value.size
 
     when {
         lengthDiff < 0 -> shift(fromIndex, -lengthDiff)
@@ -547,7 +555,7 @@ fun ByteBuf.trimStart(
     predicate: (Byte) -> Boolean = { it <= 32 }
 ): ByteBuf = apply {
     requireReadable(fromIndex, toIndex)
-    val startIndex = forEachByte(fromIndex, toIndex - fromIndex, predicate)
+    val startIndex = forEachByte(fromIndex, regionLength(fromIndex, toIndex), predicate)
     if (startIndex > fromIndex) remove(fromIndex, startIndex)
 }
 
@@ -565,7 +573,7 @@ fun ByteBuf.trimEnd(
     predicate: (Byte) -> Boolean = { it <= 32 }
 ): ByteBuf = apply {
     requireReadable(fromIndex, toIndex)
-    val endIndex = forEachByteDesc(fromIndex, toIndex - fromIndex, predicate)
+    val endIndex = forEachByteDesc(fromIndex, regionLength(fromIndex, toIndex), predicate)
     if (endIndex < toIndex - 1) remove(endIndex + 1, toIndex)
 }
 
@@ -583,7 +591,7 @@ fun ByteBuf.trim(
     predicate: (Byte) -> Boolean = { it <= 32 }
 ): ByteBuf = apply {
     requireReadable(fromIndex, toIndex)
-    val regionLength = toIndex - fromIndex
+    val regionLength = regionLength(fromIndex, toIndex)
     val startIndex = forEachByte(fromIndex, regionLength, predicate)
     val endIndex = forEachByteDesc(fromIndex, regionLength, predicate)
     if (endIndex < toIndex - 1) remove(endIndex + 1, toIndex)
@@ -605,7 +613,7 @@ fun ByteBuf.padStart(
     toIndex: Int = writerIndex()
 ): ByteBuf = apply {
     requireReadable(fromIndex, toIndex)
-    val currentLength = toIndex - fromIndex
+    val currentLength = regionLength(fromIndex, toIndex)
     if (currentLength >= length) return@apply
     val padding = ByteArray(length - currentLength) { value }
     insert(padding, fromIndex)
@@ -619,7 +627,7 @@ fun ByteBuf.padEnd(
     toIndex: Int = writerIndex()
 ): ByteBuf = apply {
     requireReadable(fromIndex, toIndex)
-    val currentLength = toIndex - fromIndex
+    val currentLength = regionLength(fromIndex, toIndex)
     if (currentLength >= length) return@apply
     val padding = ByteArray(length - currentLength) { value }
     insert(padding, toIndex)
@@ -631,7 +639,7 @@ fun ByteBuf.subsequence(
     toIndex: Int = writerIndex()
 ): ByteArray {
     requireReadable(fromIndex, toIndex)
-    val length = toIndex - fromIndex
+    val length = regionLength(fromIndex, toIndex)
     if (length == 0) return EMPTY_ARRAY
     return ByteArray(length).apply { getBytes(fromIndex, this) }
 }
@@ -651,7 +659,7 @@ inline fun ByteBuf.forEachSlice(
     nextSlice: ByteBuf.() -> ByteBuf?,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
-    action: ByteBuf.() -> Unit
+    action: (ByteBuf) -> Unit,
 ) {
     requireReadable(fromIndex, toIndex)
 
@@ -662,7 +670,7 @@ inline fun ByteBuf.forEachSlice(
             val readableBytes = readableBytes()
             val slice = nextSlice() ?: break
             check(readableBytes > readableBytes()) { "Slice function did not read anything" }
-            slice.action()
+            action(slice)
         }
     }
 }
@@ -672,7 +680,7 @@ inline fun ByteBuf.forEachSubsequence(
     crossinline findDelimiter: ByteBuf.() -> Pair<Int, Int>?,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
-    action: ByteBuf.() -> Unit
+    action: (ByteBuf) -> Unit,
 ) {
     val readSlice: ByteBuf.() -> ByteBuf = {
         val (bytesBefore, delimiterLength) = findDelimiter() ?: (readableBytes() to 0)
@@ -682,11 +690,12 @@ inline fun ByteBuf.forEachSubsequence(
     forEachSlice(readSlice, fromIndex, toIndex, action)
 }
 
+@JvmOverloads
 inline fun ByteBuf.forEachSubsequence(
     delimiter: Byte,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
-    action: ByteBuf.() -> Unit
+    action: (ByteBuf) -> Unit,
 ) {
     val findDelimiter: ByteBuf.() -> Pair<Int, Int>? = {
         val bytesBefore = bytesBefore(delimiter)
@@ -696,11 +705,12 @@ inline fun ByteBuf.forEachSubsequence(
     forEachSubsequence(findDelimiter, fromIndex, toIndex, action)
 }
 
+@JvmOverloads
 inline fun ByteBuf.forEachSubsequence(
     delimiter: ByteArray,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
-    action: ByteBuf.() -> Unit
+    action: (ByteBuf) -> Unit,
 ) {
     val findDelimiter: ByteBuf.() -> Pair<Int, Int>? = {
         val bytesBefore = bytesBefore(delimiter)
@@ -710,10 +720,11 @@ inline fun ByteBuf.forEachSubsequence(
     forEachSubsequence(findDelimiter, fromIndex, toIndex, action)
 }
 
+@JvmOverloads
 inline fun ByteBuf.forEachSubsequence(
     delimiter: String,
     fromIndex: Int = readerIndex(),
     toIndex: Int = writerIndex(),
     charset: Charset = UTF_8,
-    action: ByteBuf.() -> Unit
+    action: (ByteBuf) -> Unit,
 ) = forEachSubsequence(delimiter.toByteArray(charset), fromIndex, toIndex, action)

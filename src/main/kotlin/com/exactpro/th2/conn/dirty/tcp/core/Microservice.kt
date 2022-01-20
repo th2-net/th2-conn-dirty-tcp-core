@@ -98,10 +98,7 @@ class Microservice(
     }
 
     private val channels = settings.sessions.associateBy(SessionSettings::sessionAlias, ::createChannel)
-
-    private val manager = ChannelManager(channels, executor).apply {
-        registerResource("channel-manager", ::closeAll)
-    }
+    private val manager = ChannelManager(channels, executor)
 
     fun run() {
         runCatching {
@@ -159,14 +156,10 @@ class Microservice(
         val sendEvent: (Event) -> Unit = { eventRouter.storeEvent(it, parentEventId) }
 
         val handlerContext = Context(session.handler, readDictionary, sendEvent)
-        val handler = handlerFactory.create(handlerContext).apply {
-            registerResource("handler-$sessionAlias", ::close)
-        }
+        val handler = handlerFactory.create(handlerContext)
 
         val manglerContext = Context(session.mangler, readDictionary, sendEvent)
-        val mangler = manglerFactory.create(manglerContext).apply {
-            registerResource("mangler-$sessionAlias", ::close)
-        }
+        val mangler = manglerFactory.create(manglerContext)
 
         val channel = Channel(
             InetSocketAddress(session.host, session.port),
@@ -184,6 +177,10 @@ class Microservice(
 
         handlerContext.channel = channel
         manglerContext.channel = channel
+
+        registerResource("channel-$sessionAlias", channel::close)
+        registerResource("handler-$sessionAlias", handler::close)
+        registerResource("mangler-$sessionAlias", mangler::close)
 
         sequencePool.create("send-$sessionAlias")
 
