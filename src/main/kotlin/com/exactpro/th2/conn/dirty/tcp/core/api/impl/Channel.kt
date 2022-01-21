@@ -83,7 +83,10 @@ class Channel(
         reconnect = true
 
         lock.write {
-            check(!isOpen) { "Already connected to: ${channel.address}" }
+            if (isOpen) {
+                logger.warn { "Already connected to: ${channel.address}" }
+                return
+            }
 
             if (address != channel.address || secure != channel.isSecure) {
                 channel = createChannel(address, secure)
@@ -165,6 +168,7 @@ class Channel(
         mangler.onIncoming(message.asReadOnly(), metadata)
         val protoMessage = message.toMessage(sessionAlias, FIRST, metadata)
         storeMessage(protoMessage)
+        message.release()
     }
 
     override fun onError(cause: Throwable) = onError("Error on: $address", cause)
@@ -177,7 +181,7 @@ class Channel(
 
         if (reconnect) {
             Thread.sleep(reconnectDelay)
-            open(channel.address, channel.isSecure)
+            if (!isOpen) open(channel.address, channel.isSecure)
         }
     }
 
