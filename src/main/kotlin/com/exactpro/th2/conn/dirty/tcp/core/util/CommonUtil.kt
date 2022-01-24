@@ -40,6 +40,7 @@ import com.exactpro.th2.common.message.plusAssign
 import com.exactpro.th2.common.message.sequence
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.toJson
+import com.exactpro.th2.common.message.toTimestamp
 import com.google.protobuf.ByteString
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
@@ -70,11 +71,17 @@ fun ByteBuf.toMessage(
     parentEventId: EventID? = null
 ): RawMessage = RawMessage.newBuilder().run {
     parentEventId?.let { this.parentEventId = it }
-    this.body = ByteString.copyFrom(this@toMessage.asReadOnly().nioBuffer())
+
+    this.body = ByteString.copyFrom(asReadOnly().nioBuffer())
     this.sessionAlias = sessionAlias
     this.direction = direction
     this.sequence = sessionAlias.getSequence(direction)
-    this.metadataBuilder.putAllProperties(metadata)
+
+    this.metadataBuilder.apply {
+        putAllProperties(metadata)
+        timestamp = Instant.now().toTimestamp()
+    }
+
     build()
 }
 
