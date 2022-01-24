@@ -84,7 +84,7 @@ fun ByteBuf.indexOf(
     if (regionLength < valueLength) return -1
     val factory = newKmpSearchProcessorFactory(value)
     val indexOf = forEachByte(fromIndex, regionLength, factory.newSearchProcessor())
-    return indexOf - valueLength + 1
+    return (indexOf - valueLength + 1).coerceAtLeast(-1)
 }
 
 @JvmOverloads
