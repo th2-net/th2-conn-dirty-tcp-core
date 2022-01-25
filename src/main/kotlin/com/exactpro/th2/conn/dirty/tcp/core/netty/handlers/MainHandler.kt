@@ -45,7 +45,9 @@ class MainHandler(
     override fun decode(ctx: ChannelHandlerContext, buf: ByteBuf, out: MutableList<Any>) {
         logger.trace { "Attempting to decode data received from: ${ctx.channel().remoteAddress()} (data: ${hexDump(buf)})" }
 
-        generateSequence { buf.readMessage(ctx) }.forEach { message ->
+        while (buf.isReadable) {
+            val message = buf.readMessage(ctx) ?: break
+
             onEvent {
                 message.runCatching(onMessage).onFailure {
                     ctx.fireExceptionCaught("Failed to handle message received from: ${ctx.channel().remoteAddress()} (message: ${hexDump(message)})", it)
