@@ -80,7 +80,7 @@ fun main(args: Array<String>) = try {
     val messageRouter = factory.messageRouterMessageGroupBatch
 
     Microservice(
-        factory.boxConfiguration.boxName ?: "unknown",
+        factory.rootEventId,
         settings,
         factory::readDictionary,
         eventRouter,

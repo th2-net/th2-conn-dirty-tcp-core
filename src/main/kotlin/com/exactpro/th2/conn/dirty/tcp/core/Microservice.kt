@@ -49,18 +49,18 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
 
 class Microservice(
-    name: String,
+    rootEventId: String?,
     private val settings: Settings,
     private val readDictionary: (DictionaryType) -> InputStream,
     private val eventRouter: MessageRouter<EventBatch>,
     private val messageRouter: MessageRouter<MessageGroupBatch>,
     private val handlerFactory: IProtocolHandlerFactory,
     private val manglerFactory: IProtocolManglerFactory,
-    private val registerResource: (name: String, destructor: () -> Unit) -> Unit
+    private val registerResource: (name: String, destructor: () -> Unit) -> Unit,
 ) {
     private val logger = KotlinLogging.logger {}
 
-    private val rootEventId = eventRouter.storeEvent("Dirty TCP client - $name".toEvent()).id
+    private val rootEventId = rootEventId ?: eventRouter.storeEvent("Dirty TCP client".toEvent()).id
     private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId).id }
 
     private val executor = Executors.newScheduledThreadPool(settings.totalThreads).apply {
