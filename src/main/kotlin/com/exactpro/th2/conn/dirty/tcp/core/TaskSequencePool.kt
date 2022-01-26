@@ -98,7 +98,7 @@ class TaskSequencePool(private val executor: Executor) : AutoCloseable {
 
                 when {
                     size.decrementAndGet() == 0 -> break
-                    thread.isInterrupted -> consume()
+                    thread.isInterrupted -> return consume()
                 }
             }
         }

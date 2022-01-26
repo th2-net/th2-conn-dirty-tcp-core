@@ -61,7 +61,7 @@ class Microservice(
     private val logger = KotlinLogging.logger {}
 
     private val rootEventId = eventRouter.storeEvent("Dirty TCP client - $name".toEvent()).id
-    private val errorEventId = eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId).id
+    private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId).id }
 
     private val executor = Executors.newScheduledThreadPool(settings.totalThreads).apply {
         registerResource("executor") {

@@ -28,3 +28,9 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 * prepare
 * mangle
 * direct
+
+# Changelog
+
+## 0.0.3
+
+* publish error event lazily
