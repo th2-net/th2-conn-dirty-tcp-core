@@ -170,6 +170,7 @@ class Microservice(
             mangler,
             ::onEvent,
             ::onMessage,
+            executor,
             eventLoopGroup,
             sequencePool,
             EventID.newBuilder().setId(parentEventId).build()

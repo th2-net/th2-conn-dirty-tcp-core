@@ -42,6 +42,8 @@ import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.channel.EventLoopGroup
 import mu.KotlinLogging
 import java.net.InetSocketAddress
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
@@ -56,6 +58,7 @@ class Channel(
     private val mangler: IProtocolMangler,
     private val onEvent: (event: Event, parentEventId: EventID) -> Unit,
     private val onMessage: (RawMessage) -> Unit,
+    private val executor: ScheduledExecutorService,
     private val eventLoopGroup: EventLoopGroup,
     sequencePool: TaskSequencePool,
     val parentEventId: EventID
@@ -180,8 +183,7 @@ class Channel(
         runCatching(mangler::onClose).onFailure(::onError)
 
         if (reconnect) {
-            Thread.sleep(reconnectDelay)
-            if (!isOpen) open(channel.address, channel.isSecure)
+            executor.schedule({ if (!isOpen) open(channel.address, channel.isSecure) }, reconnectDelay, MILLISECONDS)
         }
     }
 

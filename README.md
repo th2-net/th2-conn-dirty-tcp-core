@@ -31,6 +31,10 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 
 # Changelog
 
+## 0.0.5
+
+* use scheduler for reconnect tasks
+
 ## 0.0.4
 
 * use existing root event (if any)
