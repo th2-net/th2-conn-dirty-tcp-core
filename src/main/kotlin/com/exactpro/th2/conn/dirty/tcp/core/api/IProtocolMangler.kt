@@ -44,7 +44,7 @@ interface IProtocolMangler : AutoCloseable {
     /**
      * This method is can be called before sending [message] to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).
      *
-     * It should analyze message and its metadata and modify message (e.g. add header) if required.
+     * It should analyze message and its metadata and modify message (e.g. add header) or metadata (e.g. additional fields) if required.
      *
      * If message was modified it must return event with modifications description
      *
@@ -54,7 +54,7 @@ interface IProtocolMangler : AutoCloseable {
      * @param metadata message metadata
      * @return event with message modifications descriptions or `null` if there wasn't any
      */
-    fun onOutgoing(message: ByteBuf, metadata: Map<String, String>): Event?
+    fun onOutgoing(message: ByteBuf, metadata: MutableMap<String, String>): Event?
 
     /**
      * This method is called after [message] was sent to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode])
@@ -64,7 +64,7 @@ interface IProtocolMangler : AutoCloseable {
      * @param message buffer with sent message
      * @param metadata message metadata
      */
-    fun afterOutgoing(message: ByteBuf, metadata: Map<String, String>) = Unit
+    fun afterOutgoing(message: ByteBuf, metadata: MutableMap<String, String>) = Unit
 
     /**
      * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).
