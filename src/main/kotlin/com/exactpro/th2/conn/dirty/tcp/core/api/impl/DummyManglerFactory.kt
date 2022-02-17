@@ -31,6 +31,6 @@ object DummyManglerFactory : IProtocolManglerFactory {
     class DummyManglerSettings : IProtocolManglerSettings
 
     object DummyMangler : IProtocolMangler {
-        override fun onOutgoing(message: ByteBuf, metadata: Map<String, String>): Event? = null
+        override fun onOutgoing(message: ByteBuf, metadata: MutableMap<String, String>): Event? = null
     }
 }
