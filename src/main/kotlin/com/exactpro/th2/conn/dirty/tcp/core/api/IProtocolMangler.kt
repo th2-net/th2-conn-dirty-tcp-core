@@ -64,7 +64,7 @@ interface IProtocolMangler : AutoCloseable {
      * @param message buffer with sent message
      * @param metadata message metadata
      */
-    fun afterOutgoing(message: ByteBuf, metadata: MutableMap<String, String>) = Unit
+    fun afterOutgoing(message: ByteBuf, metadata: Map<String, String>) = Unit
 
     /**
      * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).
