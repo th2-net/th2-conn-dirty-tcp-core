@@ -66,7 +66,6 @@ interface IProtocolHandler : AutoCloseable {
      *
      * It should analyze message and its metadata and modify them (e.g. add header or a metadata property) if required.
      *
-     * It also returns message metadata which can passed to [IProtocolMangler.onOutgoing] and will be stored in [RawMessage][com.exactpro.th2.common.grpc.RawMessage]
      *
      * It can also be used to change state according to outgoing message (e.g. schedule a re-login when logout message is being sent).
      *
