@@ -72,7 +72,7 @@ interface IProtocolHandler : AutoCloseable {
      * @param message mutable buffer with outgoing message
      * @param metadata message metadata
      */
-    fun onOutgoing(message: ByteBuf, metadata: MutableMap<String, String>)  = Unit
+    fun onOutgoing(message: ByteBuf, metadata: MutableMap<String, String>) = Unit
 
     /**
      * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).

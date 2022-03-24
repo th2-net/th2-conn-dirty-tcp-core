@@ -108,36 +108,34 @@ class Channel(
 
     fun send(message: RawMessage) = sendInternal(
         message = message.body.toByteBuf(),
-        metadata = message.metadata.propertiesMap,
+        metadata = message.metadata.propertiesMap.toMutableMap(),
         parentEventId = message.eventId
     )
 
     override fun send(message: ByteBuf, metadata: Map<String, String>, mode: SendMode) = sendInternal(
         message = message,
-        metadata = metadata,
+        metadata = metadata.toMutableMap(),
         mode = mode
     )
 
     private fun sendInternal(
         message: ByteBuf,
-        metadata: Map<String, String> = mapOf(),
+        metadata: MutableMap<String, String>,
         mode: SendMode = HANDLE_AND_MANGLE,
-        parentEventId: EventID? = null
+        parentEventId: EventID? = null,
     ): MessageID = lock.read {
         if (!isOpen) open()
 
         val buffer = message.asExpandable()
-        val resultMetadata = metadata.toMutableMap()
 
-        if (mode.handle) {
-            handler.onOutgoing(buffer, resultMetadata)
-        }
+        if (mode.handle) handler.onOutgoing(buffer, metadata)
 
-        val event = if (mode.mangle) mangler.onOutgoing(buffer, resultMetadata) else null
-        val protoMessage = buffer.toMessage(sessionAlias, SECOND, resultMetadata, parentEventId)
+        val event = if (mode.mangle) mangler.onOutgoing(buffer, metadata) else null
+        val protoMessage = buffer.toMessage(sessionAlias, SECOND, metadata, parentEventId)
 
         channel.send(buffer.asReadOnly())
-        if (mode.mangle) mangler.afterOutgoing(buffer, resultMetadata)
+
+        if (mode.mangle) mangler.afterOutgoing(buffer, metadata)
 
         event?.run { storeEvent(attachMessage(protoMessage), parentEventId ?: this@Channel.parentEventId) }
         storeMessage(protoMessage)
