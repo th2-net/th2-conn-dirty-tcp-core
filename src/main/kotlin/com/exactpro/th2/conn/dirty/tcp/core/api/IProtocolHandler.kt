@@ -64,7 +64,7 @@ interface IProtocolHandler : AutoCloseable {
     /**
      * This method is can be called before sending [message] to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).
      *
-     * It should analyze message and its metadata and modify message (e.g. add header) or metadata (e.g. additional fields) if required.
+     * It should analyze message and its metadata and modify them (e.g. add header or a metadata property) if required.
      *
      * It also returns message metadata which can passed to [IProtocolMangler.onOutgoing] and will be stored in [RawMessage][com.exactpro.th2.common.grpc.RawMessage]
      *
