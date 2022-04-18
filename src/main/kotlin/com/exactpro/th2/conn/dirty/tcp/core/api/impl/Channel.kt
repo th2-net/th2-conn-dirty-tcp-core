@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,14 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core.api.impl
 
-import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.Direction.FIRST
 import com.exactpro.th2.common.grpc.Direction.SECOND
+import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.conn.dirty.tcp.core.TaskSequencePool
+import com.exactpro.th2.common.message.toJson
+import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode.HANDLE_AND_MANGLE
@@ -33,6 +34,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.netty.TcpChannel
 import com.exactpro.th2.conn.dirty.tcp.core.util.asExpandable
 import com.exactpro.th2.conn.dirty.tcp.core.util.attachMessage
 import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
+import com.exactpro.th2.conn.dirty.tcp.core.util.submitWithRetry
 import com.exactpro.th2.conn.dirty.tcp.core.util.toByteBuf
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
@@ -41,12 +43,15 @@ import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.channel.EventLoopGroup
 import mu.KotlinLogging
+import org.jctools.queues.MpscUnboundedArrayQueue
 import java.net.InetSocketAddress
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Future
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
-
+import com.exactpro.th2.common.event.Event as CommonEvent
 
 class Channel(
     private val defaultAddress: InetSocketAddress,
@@ -55,20 +60,22 @@ class Channel(
     private val reconnectDelay: Long,
     private val handler: IProtocolHandler,
     private val mangler: IProtocolMangler,
-    private val onEvent: (event: Event, parentEventId: EventID) -> Unit,
-    private val onMessage: (RawMessage) -> Unit,
+    onEvent: (Event) -> Unit,
+    onMessage: (RawMessage) -> Unit,
     private val executor: ScheduledExecutorService,
     private val eventLoopGroup: EventLoopGroup,
-    sequencePool: TaskSequencePool,
-    val parentEventId: EventID
+    val parentEventId: EventID,
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
     private val lock = ReentrantLock()
-    private val channelSequence = sequencePool.create("channel-events-$sessionAlias", Int.MAX_VALUE)
-    private val messageSequence = sequencePool.create("messages-$sessionAlias")
-    private val eventSequence = sequencePool.create("events-$sessionAlias")
+
+    private val ioEvents = executor.newPipe("io-events-$sessionAlias", MpscUnboundedArrayQueue(1024), Runnable::run)
+    private val messages = executor.newPipe("messages-$sessionAlias", consumer = onMessage)
+    private val events = executor.newPipe("events-$sessionAlias", consumer = onEvent)
+
     @Volatile private var reconnect = true
     @Volatile private var channel = createChannel(defaultAddress, defaultSecure)
+    private var connectFuture: Future<Unit> = CompletableFuture.completedFuture(Unit)
 
     override val address: InetSocketAddress
         get() = channel.address
@@ -81,27 +88,44 @@ class Channel(
 
     override fun open() = open(defaultAddress, defaultSecure)
 
-    override fun open(address: InetSocketAddress, secure: Boolean) {
+    override fun open(address: InetSocketAddress, secure: Boolean): Unit = openAsync(address, secure).get()
+
+    private fun openAsync(address: InetSocketAddress, secure: Boolean): Future<Unit> {
+        logger.debug { "Trying to connect to: $address (session: $sessionAlias)" }
+
         reconnect = true
 
         lock.withLock {
             if (isOpen) {
-                logger.warn { "Already connected to: ${channel.address}" }
-                return
+                logger.warn { "Already connected to: ${channel.address} (session: $sessionAlias)" }
+                return connectFuture
+            }
+
+            if (!connectFuture.isDone) {
+                logger.warn { "Already connecting to: ${channel.address} (session: $sessionAlias)" }
+                return connectFuture
             }
 
             if (address != channel.address || secure != channel.isSecure) {
                 channel = createChannel(address, secure)
             }
 
-            while (!isOpen && reconnect) {
-                onInfo("Connecting to: $address")
+            connectFuture = executor.submitWithRetry(reconnectDelay) {
+                if (reconnect) {
+                    onInfo("Connecting to: $address (session: $sessionAlias)")
 
-                runCatching(channel::open).onFailure {
-                    onError("Failed to connect to: $address", it)
-                    Thread.sleep(reconnectDelay)
+                    runCatching(channel::open).onFailure {
+                        onError("Failed to connect to: $address (session: $sessionAlias)", it)
+                        throw it
+                    }
+
+                    Result.success(Unit)
+                } else {
+                    Result.failure(IllegalStateException("Stopped connection attempts to: $address (session: $sessionAlias)"))
                 }
             }
+
+            return connectFuture
         }
     }
 
@@ -123,7 +147,7 @@ class Channel(
         mode: SendMode = HANDLE_AND_MANGLE,
         parentEventId: EventID? = null,
     ): MessageID = lock.withLock {
-        if (!isOpen) open()
+        check(isOpen) { "Cannot send message. Not connected to: $address (session: $sessionAlias)" }
 
         val buffer = message.asExpandable()
 
@@ -147,28 +171,28 @@ class Channel(
 
         lock.withLock {
             if (isOpen) {
-                onInfo("Disconnecting from: $address")
+                onInfo("Disconnecting from: $address (session: $sessionAlias)")
 
                 runCatching(channel::close).onFailure {
-                    onError("Failed to disconnect from: $address", it)
+                    onError("Failed to disconnect from: $address (session: $sessionAlias)", it)
                 }
             }
         }
     }
 
     override fun onOpen() {
-        onInfo("Connected to: $address")
+        onInfo("Connected to: $address (session: $sessionAlias)")
         handler.onOpen()
         mangler.onOpen()
     }
 
     override fun onReceive(buffer: ByteBuf): ByteBuf? {
-        logger.trace { "Received data: ${hexDump(buffer)}" }
+        logger.trace { "Received data on '$sessionAlias' session: ${hexDump(buffer)}" }
         return handler.onReceive(buffer)
     }
 
     override fun onMessage(message: ByteBuf) {
-        logger.trace { "Received message: ${hexDump(message)}" }
+        logger.trace { "Received message on '$sessionAlias' session: ${hexDump(message)}" }
         val metadata = handler.onIncoming(message.asReadOnly())
         mangler.onIncoming(message.asReadOnly(), metadata)
         val protoMessage = message.toMessage(sessionAlias, FIRST, metadata)
@@ -176,16 +200,16 @@ class Channel(
         message.release()
     }
 
-    override fun onError(cause: Throwable) = onError("Error on: $address", cause)
+    override fun onError(cause: Throwable) = onError("Error on: $address (session: $sessionAlias)", cause)
 
     override fun onClose() {
-        onInfo("Disconnected from: $address")
+        onInfo("Disconnected from: $address (session: $sessionAlias)")
 
         runCatching(handler::onClose).onFailure(::onError)
         runCatching(mangler::onClose).onFailure(::onError)
 
         if (reconnect) {
-            executor.schedule({ if (!isOpen) open(channel.address, channel.isSecure) }, reconnectDelay, MILLISECONDS)
+            executor.schedule({ if (!isOpen && reconnect) openAsync(defaultAddress, defaultSecure) }, reconnectDelay, MILLISECONDS)
         }
     }
 
@@ -199,15 +223,25 @@ class Channel(
         storeEvent(message.toErrorEvent(cause), parentEventId)
     }
 
-    private fun storeMessage(message: RawMessage) = messageSequence.execute { onMessage(message) }
+    private fun storeMessage(message: RawMessage) {
+        if (!messages.send(message)) {
+            logger.error { "Failed to store message from '$sessionAlias' session due to overflow: ${message.toJson()}" }
+        }
+    }
 
-    private fun storeEvent(event: Event, parentEventId: EventID) = eventSequence.execute { onEvent(event, parentEventId) }
+    private fun storeEvent(event: CommonEvent, parentEventId: EventID) = storeEvent(event.toProto(parentEventId))
+
+    private fun storeEvent(event: Event) {
+        if (!events.send(event)) {
+            logger.error { "Failed to store event from '$sessionAlias' session due to overflow: ${event.toJson()}" }
+        }
+    }
 
     private fun createChannel(address: InetSocketAddress, secure: Boolean) = TcpChannel(
         address,
         secure,
         eventLoopGroup,
-        channelSequence::execute,
+        ioEvents::send,
         this
     )
 }
