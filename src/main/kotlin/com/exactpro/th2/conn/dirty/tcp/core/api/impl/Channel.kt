@@ -44,9 +44,8 @@ import mu.KotlinLogging
 import java.net.InetSocketAddress
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit.MILLISECONDS
-import java.util.concurrent.locks.ReentrantReadWriteLock
-import kotlin.concurrent.read
-import kotlin.concurrent.write
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 
 class Channel(
@@ -64,7 +63,7 @@ class Channel(
     val parentEventId: EventID
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
-    private val lock = ReentrantReadWriteLock()
+    private val lock = ReentrantLock()
     private val channelSequence = sequencePool.create("channel-events-$sessionAlias", Int.MAX_VALUE)
     private val messageSequence = sequencePool.create("messages-$sessionAlias")
     private val eventSequence = sequencePool.create("events-$sessionAlias")
@@ -85,7 +84,7 @@ class Channel(
     override fun open(address: InetSocketAddress, secure: Boolean) {
         reconnect = true
 
-        lock.write {
+        lock.withLock {
             if (isOpen) {
                 logger.warn { "Already connected to: ${channel.address}" }
                 return
@@ -123,7 +122,7 @@ class Channel(
         metadata: MutableMap<String, String>,
         mode: SendMode = HANDLE_AND_MANGLE,
         parentEventId: EventID? = null,
-    ): MessageID = lock.read {
+    ): MessageID = lock.withLock {
         if (!isOpen) open()
 
         val buffer = message.asExpandable()
@@ -146,7 +145,7 @@ class Channel(
     override fun close() {
         reconnect = false
 
-        lock.write {
+        lock.withLock {
             if (isOpen) {
                 onInfo("Disconnecting from: $address")
 
