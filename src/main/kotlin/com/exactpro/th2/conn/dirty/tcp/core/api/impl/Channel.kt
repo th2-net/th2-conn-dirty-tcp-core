@@ -146,25 +146,48 @@ class Channel(
         metadata: MutableMap<String, String>,
         mode: SendMode = HANDLE_AND_MANGLE,
         parentEventId: EventID? = null,
-    ): MessageID = lock.withLock {
+    ): MessageID = try {
+        logger.debug { "Acquiring send lock: $sessionAlias" }
+        lock.lock()
+        logger.debug { "Acquired send lock: $sessionAlias" }
         check(isOpen) { "Cannot send message. Not connected to: $address (session: $sessionAlias)" }
 
         val buffer = message.asExpandable()
 
+        logger.debug { "Handling message: $sessionAlias" }
         if (mode.handle) handler.preOutgoing(buffer, metadata)
+        logger.debug { "Handled message: $sessionAlias" }
 
+        logger.debug { "Mangling message: $sessionAlias" }
         val event = if (mode.mangle) mangler.preOutgoing(buffer, metadata) else null
+        logger.debug { "Mangled message: $sessionAlias" }
+
         val protoMessage = buffer.toMessage(sessionAlias, SECOND, metadata, parentEventId)
 
+        logger.debug { "Sending message: $sessionAlias" }
         channel.send(buffer.asReadOnly())
+        logger.debug { "Sent message: $sessionAlias" }
 
+        logger.debug { "Storing mangle event: $sessionAlias" }
         event?.run { storeEvent(attachMessage(protoMessage), parentEventId ?: this@Channel.parentEventId) }
-        storeMessage(protoMessage)
+        logger.debug { "Stored mangle event: $sessionAlias" }
 
-        handler.onOutgoing(buffer.asReadOnly(), metadata)
-        mangler.onOutgoing(buffer.asReadOnly(), metadata)
+        logger.debug { "Storing message: $sessionAlias" }
+        storeMessage(protoMessage)
+        logger.debug { "Stored message: $sessionAlias" }
+
+        logger.debug { "Handling sent message by handler: $sessionAlias" }
+        handler.onOutgoing(buffer, metadata)
+        logger.debug { "Handled sent message by handler: $sessionAlias" }
+
+        logger.debug { "Handling sent message by mangler: $sessionAlias" }
+        mangler.onOutgoing(buffer, metadata)
+        logger.debug { "Handled sent message by mangler: $sessionAlias" }
 
         protoMessage.metadata.id
+    } finally {
+        lock.unlock()
+        logger.debug { "Released send lock: $sessionAlias" }
     }
 
     override fun close() {
