@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,9 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core
 
-import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.Direction.FIRST
+import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroup
@@ -26,11 +26,13 @@ import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.message.direction
-import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute
+import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
+import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
 import com.exactpro.th2.common.schema.message.storeEvent
+import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
@@ -47,6 +49,7 @@ import java.io.InputStream
 import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
+import com.exactpro.th2.common.event.Event as CommonEvent
 
 class Microservice(
     rootEventId: String?,
@@ -80,10 +83,6 @@ class Microservice(
         }
     }
 
-    private val sequencePool = TaskSequencePool(executor).apply {
-        registerResource("stream-executor", ::close)
-    }
-
     private val incomingBatcher = MessageBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
         messageRouter.send(batch, QueueAttribute.FIRST.value)
     }.apply {
@@ -97,6 +96,7 @@ class Microservice(
         registerResource("outgoing-batcher", ::close)
     }
 
+    private val sendPipes = mutableMapOf<Channel, Pipe<AnyMessage>>()
     private val channels = settings.sessions.associateBy(SessionSettings::sessionAlias, ::createChannel)
     private val manager = ChannelManager(channels, executor)
 
@@ -133,27 +133,24 @@ class Microservice(
             return
         }
 
-        val rawMessage = message.rawMessage
-        val sessionAlias = rawMessage.sessionAlias
+        val sessionAlias = message.sessionAlias
 
         if (sessionAlias !in channels) {
             onError("Unknown session alias: $sessionAlias", message)
             return
         }
 
-        sequencePool["send-$sessionAlias"].execute {
-            val client = manager.open(sessionAlias, settings.autoStopAfter)
+        val channel = manager.open(sessionAlias, settings.autoStopAfter)
 
-            rawMessage.runCatching(client::send).recoverCatching { cause ->
-                onError("Failed to send message", message, cause)
-            }
+        if (!sendPipes[channel]!!.send(message)) {
+            onError("Failed to send message due to overflow", message)
         }
     }
 
     private fun createChannel(session: SessionSettings): Channel {
         val sessionAlias = session.sessionAlias
         val parentEventId = eventRouter.storeEvent(sessionAlias.toEvent(), rootEventId).id
-        val sendEvent: (Event) -> Unit = { eventRouter.storeEvent(it, parentEventId) }
+        val sendEvent: (CommonEvent) -> Unit = { eventRouter.storeEvent(it, parentEventId) }
 
         val handlerContext = Context(session.handler, readDictionary, sendEvent)
         val handler = handlerFactory.create(handlerContext)
@@ -172,7 +169,6 @@ class Microservice(
             ::onMessage,
             executor,
             eventLoopGroup,
-            sequencePool,
             EventID.newBuilder().setId(parentEventId).build()
         )
 
@@ -183,7 +179,11 @@ class Microservice(
         registerResource("handler-$sessionAlias", handler::close)
         registerResource("mangler-$sessionAlias", mangler::close)
 
-        sequencePool.create("send-$sessionAlias")
+        sendPipes[channel] = executor.newPipe("send-$sessionAlias") { message ->
+            message.rawMessage.runCatching(channel::send).recoverCatching { cause ->
+                onError("Failed to send message", message, cause)
+            }
+        }
 
         return channel
     }
@@ -204,8 +204,9 @@ class Microservice(
         }
     }
 
-    private fun onEvent(event: Event, parentEventId: EventID) {
-        eventRouter.storeEvent(event, parentEventId.id)
+    private fun onEvent(event: Event) {
+        val batch = EventBatch.newBuilder().addEvents(event).build()
+        eventRouter.sendAll(batch, PUBLISH.toString(), EVENT.toString())
     }
 
     private fun onMessage(message: RawMessage) = when (message.direction) {
