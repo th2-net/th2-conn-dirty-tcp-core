@@ -16,9 +16,10 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core
 
+import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.event.EventUtils.toEventID
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.Direction.FIRST
-import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroup
@@ -32,6 +33,7 @@ import com.exactpro.th2.common.schema.message.QueueAttribute
 import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
 import com.exactpro.th2.common.schema.message.storeEvent
+import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerFactory
@@ -49,7 +51,6 @@ import java.io.InputStream
 import java.net.InetSocketAddress
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
-import com.exactpro.th2.common.event.Event as CommonEvent
 
 class Microservice(
     rootEventId: String?,
@@ -83,17 +84,23 @@ class Microservice(
         }
     }
 
-    private val incomingBatcher = MessageBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
+    private val incomingMessageBatcher = MessageBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
         messageRouter.send(batch, QueueAttribute.FIRST.value)
     }.apply {
-        registerResource("incoming-batcher", ::close)
+        registerResource("incoming-message-batcher", ::close)
     }
 
-    private val outgoingBatcher = MessageBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
+    private val outgoingMessageBatcher = MessageBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
         messageRouter.send(batch, QueueAttribute.SECOND.value)
         publishSentEvents(batch)
     }.apply {
-        registerResource("outgoing-batcher", ::close)
+        registerResource("outgoing-message-batcher", ::close)
+    }
+
+    private val eventBatcher = EventBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
+        eventRouter.sendAll(batch, PUBLISH.toString(), EVENT.toString())
+    }.apply {
+        registerResource("event-batcher", ::close)
     }
 
     private val sendPipes = mutableMapOf<Channel, Pipe<AnyMessage>>()
@@ -150,7 +157,7 @@ class Microservice(
     private fun createChannel(session: SessionSettings): Channel {
         val sessionAlias = session.sessionAlias
         val parentEventId = eventRouter.storeEvent(sessionAlias.toEvent(), rootEventId).id
-        val sendEvent: (CommonEvent) -> Unit = { eventRouter.storeEvent(it, parentEventId) }
+        val sendEvent: (Event) -> Unit = { onEvent(it, parentEventId) }
 
         val handlerContext = Context(session.handler, readDictionary, sendEvent)
         val handler = handlerFactory.create(handlerContext)
@@ -165,7 +172,7 @@ class Microservice(
             settings.reconnectDelay,
             handler,
             mangler,
-            ::onEvent,
+            eventBatcher::onEvent,
             ::onMessage,
             executor,
             eventLoopGroup,
@@ -200,25 +207,24 @@ class Microservice(
             if (eventId == null) continue
             val event = "Sent ${messageIds.size} message(s)".toEvent()
             messageIds.forEach(event::messageID)
-            eventRouter.storeEvent(event, eventId.id)
+            onEvent(event, eventId.id)
         }
     }
 
-    private fun onEvent(event: Event) {
-        val batch = EventBatch.newBuilder().addEvents(event).build()
-        eventRouter.sendAll(batch, PUBLISH.toString(), EVENT.toString())
+    private fun onEvent(event: Event, parentId: String) {
+        eventBatcher.onEvent(event.toProto(toEventID(parentId)))
     }
 
     private fun onMessage(message: RawMessage) = when (message.direction) {
-        FIRST -> incomingBatcher.onMessage(message)
-        else -> outgoingBatcher.onMessage(message)
+        FIRST -> incomingMessageBatcher.onMessage(message)
+        else -> outgoingMessageBatcher.onMessage(message)
     }
 
     private fun onError(error: String, message: AnyMessage, cause: Throwable? = null) {
         val id = message.messageId
         val event = error.toErrorEvent(cause).messageID(id)
         logger.error("$error (message: ${id.logId})", cause)
-        eventRouter.storeEvent(event, message.getErrorEventId())
+        onEvent(event, message.getErrorEventId())
     }
 
     private fun onError(error: String, group: MessageGroup, cause: Throwable? = null) {
@@ -232,7 +238,7 @@ class Microservice(
         messageIds.forEach { (parentEventId, messageIds) ->
             val event = error.toErrorEvent(cause)
             messageIds.forEach(event::messageID)
-            eventRouter.storeEvent(event, parentEventId)
+            onEvent(event, parentEventId)
         }
     }
 
