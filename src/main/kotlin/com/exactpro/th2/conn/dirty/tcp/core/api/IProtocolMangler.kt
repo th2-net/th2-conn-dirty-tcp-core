@@ -54,17 +54,17 @@ interface IProtocolMangler : AutoCloseable {
      * @param metadata message metadata
      * @return event with message modifications descriptions or `null` if there wasn't any
      */
-    fun onOutgoing(message: ByteBuf, metadata: MutableMap<String, String>): Event?
+    fun preOutgoing(message: ByteBuf, metadata: MutableMap<String, String>): Event?
 
     /**
-     * This method is called after [message] was sent to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode])
+     * This method is called after [message] was sent to a corresponding channel
      *
      * For example, it can be used close a corresponding channel after a certain message was sent
      *
      * @param message buffer with sent message
      * @param metadata message metadata
      */
-    fun afterOutgoing(message: ByteBuf, metadata: Map<String, String>) = Unit
+    fun onOutgoing(message: ByteBuf, metadata: Map<String, String>) = Unit
 
     /**
      * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).

@@ -66,13 +66,22 @@ interface IProtocolHandler : AutoCloseable {
      *
      * It should analyze message and its metadata and modify them (e.g. add header or a metadata property) if required.
      *
-     *
      * It can also be used to change state according to outgoing message (e.g. schedule a re-login when logout message is being sent).
      *
      * @param message mutable buffer with outgoing message
      * @param metadata message metadata
      */
-    fun onOutgoing(message: ByteBuf, metadata: MutableMap<String, String>) = Unit
+    fun preOutgoing(message: ByteBuf, metadata: MutableMap<String, String>) = Unit
+
+    /**
+     * This method is called after [message] was sent to a corresponding channel
+     *
+     * For example, it can be used close a corresponding channel after a certain message was sent
+     *
+     * @param message buffer with sent message
+     * @param metadata message metadata
+     */
+    fun onOutgoing(message: ByteBuf, metadata: Map<String, String>) = Unit
 
     /**
      * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).

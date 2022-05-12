@@ -151,17 +151,18 @@ class Channel(
 
         val buffer = message.asExpandable()
 
-        if (mode.handle) handler.onOutgoing(buffer, metadata)
+        if (mode.handle) handler.preOutgoing(buffer, metadata)
 
-        val event = if (mode.mangle) mangler.onOutgoing(buffer, metadata) else null
+        val event = if (mode.mangle) mangler.preOutgoing(buffer, metadata) else null
         val protoMessage = buffer.toMessage(sessionAlias, SECOND, metadata, parentEventId)
 
         channel.send(buffer.asReadOnly())
 
-        if (mode.mangle) mangler.afterOutgoing(buffer, metadata)
-
         event?.run { storeEvent(attachMessage(protoMessage), parentEventId ?: this@Channel.parentEventId) }
         storeMessage(protoMessage)
+
+        handler.onOutgoing(buffer.asReadOnly(), metadata)
+        mangler.onOutgoing(buffer.asReadOnly(), metadata)
 
         protoMessage.metadata.id
     }

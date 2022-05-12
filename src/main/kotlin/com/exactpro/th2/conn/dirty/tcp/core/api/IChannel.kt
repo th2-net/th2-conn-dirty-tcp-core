@@ -67,10 +67,10 @@ interface IChannel {
     /**
      * Sends [message] to this channel (if channel is closed it will be opened first).
      *
-     * Depending on send [mode] message and [metadata] could be passed to [IProtocolHandler.onOutgoing] and/or [IProtocolMangler.onOutgoing]
-     * methods which can modify message content and substitute metadata (in case of [IProtocolHandler.onOutgoing]).
+     * Depending on send [mode] message and [metadata] could be passed to [IProtocolHandler.preOutgoing] and/or [IProtocolMangler.preOutgoing]
+     * methods which can modify message content and substitute metadata (in case of [IProtocolHandler.preOutgoing]).
      *
-     * If mode is set to [SendMode.HANDLE_AND_MANGLE] or [SendMode.MANGLE] message and metadata will be passed to [IProtocolMangler.afterOutgoing] after send
+     * If mode is set to [SendMode.HANDLE_AND_MANGLE] or [SendMode.MANGLE] message and metadata will be passed to [IProtocolMangler.onOutgoing] after send
      *
      * For example, in case if mode is set to [SendMode.HANDLE_AND_MANGLE] processing sequence will look like this:
      *
@@ -103,17 +103,17 @@ interface IChannel {
 
     enum class SendMode(val handle: Boolean, val mangle: Boolean) {
         /**
-         * Message and its metadata will pass through [IProtocolHandler.onOutgoing] and [IProtocolMangler.onOutgoing] before send
+         * Message and its metadata will pass through [IProtocolHandler.preOutgoing] and [IProtocolMangler.preOutgoing] before send
          */
         HANDLE_AND_MANGLE(true, true),
 
         /**
-         * Message and its metadata will only be passed to [IProtocolHandler.onOutgoing] before send
+         * Message and its metadata will only be passed to [IProtocolHandler.preOutgoing] before send
          */
         HANDLE(true, false),
 
         /**
-         * Message and its metadata will only be passed to [IProtocolMangler.onOutgoing] before send
+         * Message and its metadata will only be passed to [IProtocolMangler.preOutgoing] before send
          */
         MANGLE(false, true),
 
