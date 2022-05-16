@@ -34,15 +34,13 @@ class MessageBatcher(
     private val executor: ScheduledExecutorService,
     private val onBatch: (MessageGroupBatch) -> Unit
 ) : AutoCloseable {
-    private val batches = ConcurrentHashMap<String, MessageBatch>()
+    private val batches = ConcurrentHashMap<String, Batch>()
 
-    fun onMessage(message: RawMessage) {
-        batches.getOrPut(message.sessionAlias, ::MessageBatch).add(message)
-    }
+    fun onMessage(message: RawMessage) = batches.getOrPut(message.sessionAlias, ::Batch).add(message)
 
-    override fun close() = batches.values.forEach(MessageBatch::close)
+    override fun close() = batches.values.forEach(Batch::close)
 
-    private inner class MessageBatch : AutoCloseable {
+    private inner class Batch : AutoCloseable {
         private val lock = ReentrantLock()
         private var batch = MessageGroupBatch.newBuilder()
         private var future: Future<*> = CompletableFuture.completedFuture(null)
