@@ -167,7 +167,7 @@ class Microservice(
 
         val channel = Channel(
             InetSocketAddress(session.host, session.port),
-            session.secure,
+            session.security,
             sessionAlias,
             settings.reconnectDelay,
             handler,

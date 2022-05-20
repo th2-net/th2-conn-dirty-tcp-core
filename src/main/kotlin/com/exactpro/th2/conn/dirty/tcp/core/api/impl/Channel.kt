@@ -44,6 +44,7 @@ import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.channel.EventLoopGroup
 import mu.KotlinLogging
 import org.jctools.queues.MpscUnboundedArrayQueue
+import java.io.File
 import java.net.InetSocketAddress
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Future
@@ -55,7 +56,7 @@ import com.exactpro.th2.common.event.Event as CommonEvent
 
 class Channel(
     private val defaultAddress: InetSocketAddress,
-    private val defaultSecure: Boolean,
+    private val defaultSecurity: Security,
     private val sessionAlias: String,
     private val reconnectDelay: Long,
     private val handler: IProtocolHandler,
@@ -74,7 +75,7 @@ class Channel(
     private val events = executor.newPipe("events-$sessionAlias", consumer = onEvent)
 
     @Volatile private var reconnect = true
-    @Volatile private var channel = createChannel(defaultAddress, defaultSecure)
+    @Volatile private var channel = createChannel(defaultAddress, defaultSecurity)
     private var connectFuture: Future<Unit> = CompletableFuture.completedFuture(Unit)
 
     override val address: InetSocketAddress
@@ -83,14 +84,14 @@ class Channel(
     override val isOpen: Boolean
         get() = channel.isOpen
 
-    override val isSecure: Boolean
-        get() = channel.isSecure
+    override val security: Security
+        get() = channel.security
 
-    override fun open() = open(defaultAddress, defaultSecure)
+    override fun open() = open(defaultAddress, defaultSecurity)
 
-    override fun open(address: InetSocketAddress, secure: Boolean): Unit = openAsync(address, secure).get()
+    override fun open(address: InetSocketAddress, security: Security): Unit = openAsync(address, security).get()
 
-    private fun openAsync(address: InetSocketAddress, secure: Boolean): Future<Unit> {
+    private fun openAsync(address: InetSocketAddress, security: Security): Future<Unit> {
         logger.debug { "Trying to connect to: $address (session: $sessionAlias)" }
 
         reconnect = true
@@ -106,8 +107,8 @@ class Channel(
                 return connectFuture
             }
 
-            if (address != channel.address || secure != channel.isSecure) {
-                channel = createChannel(address, secure)
+            if (address != channel.address || security != channel.security) {
+                channel = createChannel(address, security)
             }
 
             connectFuture = executor.submitWithRetry(reconnectDelay) {
@@ -209,7 +210,7 @@ class Channel(
         runCatching(mangler::onClose).onFailure(::onError)
 
         if (reconnect) {
-            executor.schedule({ if (!isOpen && reconnect) openAsync(defaultAddress, defaultSecure) }, reconnectDelay, MILLISECONDS)
+            executor.schedule({ if (!isOpen && reconnect) openAsync(defaultAddress, defaultSecurity) }, reconnectDelay, MILLISECONDS)
         }
     }
 
@@ -237,11 +238,18 @@ class Channel(
         }
     }
 
-    private fun createChannel(address: InetSocketAddress, secure: Boolean) = TcpChannel(
+    private fun createChannel(address: InetSocketAddress, security: Security) = TcpChannel(
         address,
-        secure,
+        security,
         eventLoopGroup,
         ioEvents::send,
         this
+    )
+
+    data class Security(
+        val ssl: Boolean = false,
+        val sni: Boolean = false,
+        val certFile: File? = null,
+        val acceptAllCerts: Boolean = false,
     )
 }

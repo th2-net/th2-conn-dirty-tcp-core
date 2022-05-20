@@ -23,6 +23,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandlerSettings
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerSettings
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel.Security
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.load
 import com.fasterxml.jackson.databind.json.JsonMapper
@@ -106,12 +107,12 @@ fun main(args: Array<String>) = try {
 }
 
 data class SessionSettings(
-    val secure: Boolean = false,
+    val security: Security = Security(),
     val host: String,
     val port: Int,
     val sessionAlias: String,
     val handler: IProtocolHandlerSettings,
-    val mangler: IProtocolManglerSettings
+    val mangler: IProtocolManglerSettings,
 )
 
 data class Settings(
