@@ -18,6 +18,7 @@ package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode.HANDLE_AND_MANGLE
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel.Security
 import io.netty.buffer.ByteBuf
 import java.net.InetSocketAddress
 import javax.annotation.concurrent.ThreadSafe
@@ -38,9 +39,9 @@ interface IChannel {
     val isOpen: Boolean
 
     /**
-     * Returns `true` if this channel is using encryption
+     * Returns channel security settings
      */
-    val isSecure: Boolean
+    val security: Security
 
     /**
      * Opens this channel using default address (i.e. establishes a TCP connection).
@@ -60,9 +61,9 @@ interface IChannel {
      * If operation was successful [IProtocolHandler.onOpen] and [IProtocolMangler.onOpen] methods will be called next
      *
      * @param address address to open channel for
-     * @param secure `true` if channel must use encryption
+     * @param security channel security settings
      */
-    fun open(address: InetSocketAddress, secure: Boolean = false)
+    fun open(address: InetSocketAddress, security: Security = Security())
 
     /**
      * Sends [message] to this channel (if channel is closed it will be opened first).

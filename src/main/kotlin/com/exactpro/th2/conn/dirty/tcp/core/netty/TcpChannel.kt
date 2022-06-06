@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core.netty
 
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel.Security
 import com.exactpro.th2.conn.dirty.tcp.core.netty.handlers.ExceptionHandler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.handlers.MainHandler
 import io.netty.bootstrap.Bootstrap
@@ -26,6 +27,7 @@ import io.netty.channel.EventLoopGroup
 import io.netty.channel.socket.nio.NioSocketChannel
 import io.netty.handler.ssl.SslContextBuilder
 import io.netty.handler.ssl.SslHandler
+import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 import mu.KotlinLogging
 import java.net.InetSocketAddress
 import java.util.concurrent.Executor
@@ -35,10 +37,10 @@ import kotlin.concurrent.write
 
 class TcpChannel(
     val address: InetSocketAddress,
-    val isSecure: Boolean,
+    val security: Security,
     group: EventLoopGroup,
     executor: Executor,
-    handler: ITcpChannelHandler
+    handler: ITcpChannelHandler,
 ) {
     private val logger = KotlinLogging.logger {}
     private val lock = ReentrantReadWriteLock()
@@ -49,9 +51,19 @@ class TcpChannel(
         remoteAddress(address)
         handler(object : ChannelInitializer<Channel>() {
             override fun initChannel(ch: Channel): Unit = ch.pipeline().run {
-                if (isSecure) {
-                    val context = SslContextBuilder.forClient().build()
-                    val engine = context.newEngine(ch.alloc())
+                if (security.ssl) {
+                    val context = SslContextBuilder.forClient().apply {
+                        when {
+                            security.acceptAllCerts -> trustManager(InsecureTrustManagerFactory.INSTANCE)
+                            security.certFile != null -> trustManager(security.certFile)
+                        }
+                    }.build()
+
+                    val engine = when (security.sni) {
+                        true -> context.newEngine(ch.alloc(), address.hostName, address.port)
+                        else -> context.newEngine(ch.alloc())
+                    }
+
                     addLast("ssl", SslHandler(engine))
                 }
 
