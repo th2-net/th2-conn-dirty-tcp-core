@@ -17,6 +17,7 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
 import io.netty.buffer.ByteBuf
 import javax.annotation.concurrent.ThreadSafe
 
@@ -39,7 +40,7 @@ interface IProtocolMangler : AutoCloseable {
      *
      * @return message metadata
      */
-    fun onIncoming(message: ByteBuf, metadata: Map<String, String>) = Unit
+    fun onIncoming(message: ByteBuf, metadata: Map<String, String>, channel: Channel) = Unit
 
     /**
      * This method is can be called before sending [message] to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).
@@ -54,7 +55,7 @@ interface IProtocolMangler : AutoCloseable {
      * @param metadata message metadata
      * @return event with message modifications descriptions or `null` if there wasn't any
      */
-    fun onOutgoing(message: ByteBuf, metadata: Map<String, String>): Event?
+    fun onOutgoing(message: ByteBuf, metadata: Map<String, String>, channel: Channel): Event?
 
     /**
      * This method is called after [message] was sent to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode])
@@ -64,7 +65,7 @@ interface IProtocolMangler : AutoCloseable {
      * @param message buffer with sent message
      * @param metadata message metadata
      */
-    fun afterOutgoing(message: ByteBuf, metadata: Map<String, String>) = Unit
+    fun afterOutgoing(message: ByteBuf, metadata: Map<String, String>, channel: Channel) = Unit
 
     /**
      * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).

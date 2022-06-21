@@ -16,6 +16,7 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
 import io.netty.buffer.ByteBuf
 import javax.annotation.concurrent.ThreadSafe
 
@@ -46,7 +47,7 @@ interface IProtocolHandler : AutoCloseable {
      *
      * @return buffer with a single protocol message or `null` if the buffer doesn't contain a complete message
      */
-    fun onReceive(buffer: ByteBuf): ByteBuf?
+    fun onReceive(buffer: ByteBuf, channel: Channel): ByteBuf?
 
     /**
      * This method is called for each [message] read from a corresponding channel.
@@ -59,7 +60,7 @@ interface IProtocolHandler : AutoCloseable {
      *
      * @return message metadata
      */
-    fun onIncoming(message: ByteBuf): Map<String, String> = mapOf()
+    fun onIncoming(message: ByteBuf, channel: Channel): Map<String, String> = mapOf()
 
     /**
      * This method is can be called before sending [message] to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).
@@ -74,7 +75,9 @@ interface IProtocolHandler : AutoCloseable {
      * @param metadata message metadata
      * @return new message metadata
      */
-    fun onOutgoing(message: ByteBuf, metadata: Map<String, String>): Map<String, String> = metadata
+    fun onOutgoing(message: ByteBuf, metadata: Map<String, String>, channel: Channel): Map<String, String> = metadata
+
+    fun getChannel(message: ByteBuf, metadata: Map<String, String>): Channel
 
     /**
      * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).
