@@ -52,7 +52,7 @@ import kotlin.concurrent.write
 class Channel(
     private val defaultAddress: InetSocketAddress,
     private val defaultSecure: Boolean,
-    private val sessionAlias: String,
+    override val sessionAlias: String,
     private val reconnectDelay: Long,
     private val handler: IProtocolHandler,
     private val mangler: IProtocolMangler,
@@ -127,12 +127,12 @@ class Channel(
         if (!isOpen) open()
 
         val buffer = message.asExpandable()
-        val metadata = if (mode.handle) handler.onOutgoing(buffer, metadata) else metadata
-        val event = if (mode.mangle) mangler.onOutgoing(buffer, metadata) else null
+        val metadata = if (mode.handle) handler.onOutgoing(buffer, metadata, this) else metadata
+        val event = if (mode.mangle) mangler.onOutgoing(buffer, metadata, this) else null
         val protoMessage = buffer.toMessage(sessionAlias, SECOND, metadata, parentEventId)
 
         channel.send(buffer.asReadOnly())
-        if (mode.mangle) mangler.afterOutgoing(buffer, metadata)
+        if (mode.mangle) mangler.afterOutgoing(buffer, metadata, this)
 
         event?.run { storeEvent(attachMessage(protoMessage), parentEventId ?: this@Channel.parentEventId) }
         storeMessage(protoMessage)
@@ -162,13 +162,13 @@ class Channel(
 
     override fun onReceive(buffer: ByteBuf): ByteBuf? {
         logger.trace { "Received data: ${hexDump(buffer)}" }
-        return handler.onReceive(buffer)
+        return handler.onReceive(buffer, this)
     }
 
     override fun onMessage(message: ByteBuf) {
         logger.trace { "Received message: ${hexDump(message)}" }
-        val metadata = handler.onIncoming(message.asReadOnly())
-        mangler.onIncoming(message.asReadOnly(), metadata)
+        val metadata = handler.onIncoming(message.asReadOnly(), this)
+        mangler.onIncoming(message.asReadOnly(), metadata, this)
         val protoMessage = message.toMessage(sessionAlias, FIRST, metadata)
         storeMessage(protoMessage)
         message.release()

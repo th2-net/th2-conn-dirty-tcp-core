@@ -42,6 +42,8 @@ interface IChannel {
      */
     val isSecure: Boolean
 
+    val sessionAlias: String
+
     /**
      * Opens this channel using default address (i.e. establishes a TCP connection).
      *

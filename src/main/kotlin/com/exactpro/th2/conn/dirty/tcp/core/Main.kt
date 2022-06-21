@@ -123,7 +123,8 @@ data class Settings(
     val maxBatchSize: Int = 100,
     val maxFlushTime: Long = 1000,
     val reconnectDelay: Long = 5000,
-    val publishSentEvents: Boolean = true
+    val publishSentEvents: Boolean = true,
+    val isMulticlient: Boolean = false
 ) {
     init {
         require(totalThreads >= 2) { "At least 2 threads are required" }
@@ -141,5 +142,8 @@ data class Settings(
             .joinToString()
 
         require(duplicates.isEmpty()) { "Duplicate session aliases: $duplicates" }
+        if(isMulticlient) {
+            require(sessions.size == 1) { "In multiclient mode only one session setting entry must be preserved." }
+        }
     }
 }

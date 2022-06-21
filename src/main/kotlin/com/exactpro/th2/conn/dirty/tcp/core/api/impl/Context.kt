@@ -19,6 +19,7 @@ package com.exactpro.th2.conn.dirty.tcp.core.api.impl
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
+import com.exactpro.th2.conn.dirty.tcp.core.api.IChannelFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IContext
 import java.io.InputStream
 
@@ -27,7 +28,7 @@ class Context<T>(
     private val getDictionary: (DictionaryType) -> InputStream,
     private val sendEvent: (Event) -> Unit
 ) : IContext<T> {
-    override lateinit var channel: IChannel
+    override lateinit var channelFactory: IChannelFactory
     override fun get(dictionary: DictionaryType) = getDictionary(dictionary)
     override fun send(event: Event) = sendEvent(event)
 }

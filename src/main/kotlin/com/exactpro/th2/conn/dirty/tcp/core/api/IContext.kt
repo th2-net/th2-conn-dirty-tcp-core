@@ -18,7 +18,9 @@ package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
 import java.io.InputStream
+import java.net.InetSocketAddress
 import javax.annotation.concurrent.ThreadSafe
 
 /**
@@ -27,9 +29,9 @@ import javax.annotation.concurrent.ThreadSafe
 @ThreadSafe
 interface IContext<T> {
     /**
-     * Returns [channel][IChannel] linked to a mangler/handler
+     * Returns channel factory
      */
-    val channel: IChannel
+    val channelFactory: IChannelFactory
 
     /**
      * Returns settings of a [handler][IProtocolHandler]/[mangler][IProtocolMangler]

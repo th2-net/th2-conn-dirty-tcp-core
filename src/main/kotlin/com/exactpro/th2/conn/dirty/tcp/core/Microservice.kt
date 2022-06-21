@@ -35,6 +35,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Context
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.ChannelFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
 import com.exactpro.th2.conn.dirty.tcp.core.util.logId
 import com.exactpro.th2.conn.dirty.tcp.core.util.messageId
@@ -99,6 +100,34 @@ class Microservice(
 
     private val channels = settings.sessions.associateBy(SessionSettings::sessionAlias, ::createChannel)
     private val manager = ChannelManager(channels, executor)
+    private val multiclient: Multiclient? = if(settings.isMulticlient) {
+            val sessionAlias = settings.sessions.first().sessionAlias
+            val parentEventId = eventRouter.storeEvent(sessionAlias.toEvent(), rootEventId).id
+            val sendEvent: (Event) -> Unit = { eventRouter.storeEvent(it, parentEventId) }
+
+            val handlerContext = Context(settings.sessions.first().handler, readDictionary, sendEvent)
+            val handler = handlerFactory.create(handlerContext)
+
+            val manglerContext = Context(settings.sessions.first().mangler, readDictionary, sendEvent)
+            val mangler = manglerFactory.create(manglerContext)
+
+            val channelFactory = ChannelFactory(
+                eventRouter,
+                sequencePool,
+                registerResource,
+                rootEventId!!,
+                handler,
+                mangler,
+                ::onEvent,
+                ::onMessage,
+                executor,
+                eventLoopGroup,
+                settings.sessions.first(),
+                settings.reconnectDelay
+            )
+            handlerContext.channelFactory = channelFactory
+            Multiclient(handler, sequencePool, ::onError)
+        } else null
 
     fun run() {
         runCatching {
@@ -121,6 +150,7 @@ class Microservice(
     }
 
     private fun handleGroup(group: MessageGroup) {
+
         if (group.messagesCount != 1) {
             onError("Message group must contain only a single message", group)
             return
@@ -135,6 +165,11 @@ class Microservice(
 
         val rawMessage = message.rawMessage
         val sessionAlias = rawMessage.sessionAlias
+
+        if(settings.isMulticlient) {
+            multiclient!!.send(rawMessage, message)
+            return
+        }
 
         if (sessionAlias !in channels) {
             onError("Unknown session alias: $sessionAlias", message)
@@ -176,8 +211,8 @@ class Microservice(
             EventID.newBuilder().setId(parentEventId).build()
         )
 
-        handlerContext.channel = channel
-        manglerContext.channel = channel
+        /*handlerContext.channel = channel
+        manglerContext.channel = channel*/
 
         registerResource("channel-$sessionAlias", channel::close)
         registerResource("handler-$sessionAlias", handler::close)
