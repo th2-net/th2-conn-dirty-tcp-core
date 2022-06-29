@@ -33,7 +33,9 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 
 + *autoStart* - enables/disable auto-starting of session on box start (`true` by default)
 + *autoStopAfter* - time in seconds after which session will be automatically stopped (`0` by default = disabled)
-+ *maxBatchSize* - max size of outgoing message batch (`100` by default)
++ *appThreads* - amount of non-IO threads (session-count * 2 by default)
++ *ioThreads* - amount of IO threads (session-count by default)
++ *maxBatchSize* - max size of outgoing message batch (`1000` by default)
 + *maxFlushTime* - max message batch flush time (`1000` by default)
 + *reconnectDelay* - delay between reconnects (`5000` by default)
 + *publishSentEvents* - enables/disables publish of "message sent" events (`true` by default)
@@ -45,6 +47,7 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 + *host* - service host
 + *port* - service port
 + *security* - connection security settings
++ *maxMessageRate* - max outgoing message rate for this session (unlimited by default)
 + *handler* - handler settings
 + *mangler* - mangler settings
 

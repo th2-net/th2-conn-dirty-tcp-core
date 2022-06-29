@@ -22,8 +22,8 @@ import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
+import com.exactpro.th2.conn.dirty.tcp.core.RateLimiter
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode.HANDLE_AND_MANGLE
@@ -59,20 +59,19 @@ class Channel(
     private val defaultSecurity: Security,
     private val sessionAlias: String,
     private val reconnectDelay: Long,
+    maxMessageRate: Int,
     private val handler: IProtocolHandler,
     private val mangler: IProtocolMangler,
-    onEvent: (Event) -> Unit,
-    onMessage: (RawMessage) -> Unit,
+    private val onEvent: (Event) -> Unit,
+    private val onMessage: (RawMessage) -> Unit,
     private val executor: ScheduledExecutorService,
     private val eventLoopGroup: EventLoopGroup,
     val parentEventId: EventID,
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
+    private val ioEvents = executor.newPipe("io-events-$sessionAlias", MpscUnboundedArrayQueue(65_536), Runnable::run)
+    private val limiter = RateLimiter(maxMessageRate)
     private val lock = ReentrantLock()
-
-    private val ioEvents = executor.newPipe("io-events-$sessionAlias", MpscUnboundedArrayQueue(1024), Runnable::run)
-    private val messages = executor.newPipe("messages-$sessionAlias", consumer = onMessage)
-    private val events = executor.newPipe("events-$sessionAlias", consumer = onEvent)
 
     @Volatile private var reconnect = true
     @Volatile private var channel = createChannel(defaultAddress, defaultSecurity)
@@ -130,13 +129,13 @@ class Channel(
         }
     }
 
-    fun send(message: RawMessage) = sendInternal(
+    fun send(message: RawMessage): CompletableFuture<MessageID> = sendInternal(
         message = message.body.toByteBuf(),
         metadata = message.metadata.propertiesMap.toMutableMap(),
         parentEventId = message.eventId
     )
 
-    override fun send(message: ByteBuf, metadata: Map<String, String>, mode: SendMode) = sendInternal(
+    override fun send(message: ByteBuf, metadata: Map<String, String>, mode: SendMode): Future<MessageID> = sendInternal(
         message = message,
         metadata = metadata.toMutableMap(),
         mode = mode
@@ -147,24 +146,37 @@ class Channel(
         metadata: MutableMap<String, String>,
         mode: SendMode = HANDLE_AND_MANGLE,
         parentEventId: EventID? = null,
-    ): MessageID = lock.withLock {
-        check(isOpen) { "Cannot send message. Not connected to: $address (session: $sessionAlias)" }
+    ) = CompletableFuture<MessageID>().apply {
+        try {
+            lock.lock()
+            limiter.acquire()
 
-        val buffer = message.asExpandable()
+            check(isOpen) { "Cannot send message. Not connected to: $address (session: $sessionAlias)" }
 
-        if (mode.handle) handler.onOutgoing(buffer, metadata)
+            val buffer = message.asExpandable()
 
-        val event = if (mode.mangle) mangler.onOutgoing(buffer, metadata) else null
-        val protoMessage = buffer.toMessage(sessionAlias, SECOND, metadata, parentEventId)
+            if (mode.handle) handler.onOutgoing(buffer, metadata)
 
-        channel.send(buffer.asReadOnly())
+            val event = if (mode.mangle) mangler.onOutgoing(buffer, metadata) else null
+            val protoMessage = buffer.toMessage(sessionAlias, SECOND, metadata, parentEventId)
 
-        if (mode.mangle) mangler.afterOutgoing(buffer, metadata)
+            thenRunAsync({
+                if (mode.mangle) mangler.afterOutgoing(buffer, metadata)
+                event?.run { storeEvent(attachMessage(protoMessage), parentEventId ?: this@Channel.parentEventId) }
+                onMessage(protoMessage)
+            }, executor)
 
-        event?.run { storeEvent(attachMessage(protoMessage), parentEventId ?: this@Channel.parentEventId) }
-        storeMessage(protoMessage)
-
-        protoMessage.metadata.id
+            channel.send(buffer.asReadOnly()).addListener {
+                when (val cause = it.cause()) {
+                    null -> complete(protoMessage.metadata.id)
+                    else -> completeExceptionally(cause)
+                }
+            }
+        } catch (e: Exception) {
+            completeExceptionally(e)
+        } finally {
+            lock.unlock()
+        }
     }
 
     override fun close() {
@@ -197,7 +209,7 @@ class Channel(
         val metadata = handler.onIncoming(message.asReadOnly())
         mangler.onIncoming(message.asReadOnly(), metadata)
         val protoMessage = message.toMessage(sessionAlias, FIRST, metadata)
-        storeMessage(protoMessage)
+        onMessage(protoMessage)
         message.release()
     }
 
@@ -224,19 +236,7 @@ class Channel(
         storeEvent(message.toErrorEvent(cause), parentEventId)
     }
 
-    private fun storeMessage(message: RawMessage) {
-        if (!messages.send(message)) {
-            logger.error { "Failed to store message from '$sessionAlias' session due to overflow: ${message.toJson()}" }
-        }
-    }
-
-    private fun storeEvent(event: CommonEvent, parentEventId: EventID) = storeEvent(event.toProto(parentEventId))
-
-    private fun storeEvent(event: Event) {
-        if (!events.send(event)) {
-            logger.error { "Failed to store event from '$sessionAlias' session due to overflow: ${event.toJson()}" }
-        }
-    }
+    private fun storeEvent(event: CommonEvent, parentEventId: EventID) = onEvent(event.toProto(parentEventId))
 
     private fun createChannel(address: InetSocketAddress, security: Security) = TcpChannel(
         address,

@@ -34,10 +34,9 @@ class Pipe<E>(
     @Volatile var isOpen = true
         private set
 
-    fun send(item: E, timeout: Long = 5000): Boolean {
+    fun send(item: E, timeout: Long = 0): Boolean {
         if (offer(item)) return true
-
-        LOGGER.warn { "Pipe is full: $name" }
+        if (timeout <= 0) return false
 
         val deadline = System.currentTimeMillis() + timeout
 
@@ -88,7 +87,7 @@ class Pipe<E>(
 
         fun <E> Executor.newPipe(
             name: String,
-            queue: Queue<E> = MpscChunkedArrayQueue(16384),
+            queue: Queue<E> = MpscChunkedArrayQueue(262_144),
             consumer: Consumer<E>,
         ): Pipe<E> = Pipe(name, queue, this, consumer)
     }

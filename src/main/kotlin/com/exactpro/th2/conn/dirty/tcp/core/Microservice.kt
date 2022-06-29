@@ -34,7 +34,6 @@ import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
 import com.exactpro.th2.common.schema.message.storeEvent
 import com.exactpro.th2.common.utils.event.EventBatcher
-import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
@@ -67,7 +66,7 @@ class Microservice(
     private val rootEventId = rootEventId ?: eventRouter.storeEvent("Dirty TCP client".toEvent()).id
     private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId).id }
 
-    private val executor = Executors.newScheduledThreadPool(settings.totalThreads).apply {
+    private val executor = Executors.newScheduledThreadPool(settings.appThreads + settings.ioThreads).apply {
         registerResource("executor") {
             shutdown()
 
@@ -103,7 +102,6 @@ class Microservice(
         registerResource("event-batcher", ::close)
     }
 
-    private val sendPipes = mutableMapOf<Channel, Pipe<AnyMessage>>()
     private val channels = settings.sessions.associateBy(SessionSettings::sessionAlias, ::createChannel)
     private val manager = ChannelManager(channels, executor)
 
@@ -149,8 +147,9 @@ class Microservice(
 
         val channel = manager.open(sessionAlias, settings.autoStopAfter)
 
-        if (!sendPipes[channel]!!.send(message)) {
-            onError("Failed to send message due to overflow", message)
+        channel.send(message.rawMessage).exceptionally {
+            onError("Failed to send message", message, it)
+            null
         }
     }
 
@@ -170,6 +169,7 @@ class Microservice(
             session.security,
             sessionAlias,
             settings.reconnectDelay,
+            session.maxMessageRate,
             handler,
             mangler,
             eventBatcher::onEvent,
@@ -185,12 +185,6 @@ class Microservice(
         registerResource("channel-$sessionAlias", channel::close)
         registerResource("handler-$sessionAlias", handler::close)
         registerResource("mangler-$sessionAlias", mangler::close)
-
-        sendPipes[channel] = executor.newPipe("send-$sessionAlias") { message ->
-            message.rawMessage.runCatching(channel::send).recoverCatching { cause ->
-                onError("Failed to send message", message, cause)
-            }
-        }
 
         return channel
     }
