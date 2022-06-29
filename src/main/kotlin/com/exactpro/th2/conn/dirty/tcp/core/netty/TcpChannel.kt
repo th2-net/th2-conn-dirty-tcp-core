@@ -22,9 +22,12 @@ import com.exactpro.th2.conn.dirty.tcp.core.netty.handlers.MainHandler
 import io.netty.bootstrap.Bootstrap
 import io.netty.buffer.ByteBuf
 import io.netty.channel.Channel
+import io.netty.channel.ChannelFuture
 import io.netty.channel.ChannelInitializer
+import io.netty.channel.ChannelOption
 import io.netty.channel.EventLoopGroup
 import io.netty.channel.socket.nio.NioSocketChannel
+import io.netty.handler.flush.FlushConsolidationHandler
 import io.netty.handler.ssl.SslContextBuilder
 import io.netty.handler.ssl.SslHandler
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory
@@ -48,9 +51,12 @@ class TcpChannel(
     private val bootstrap = Bootstrap().apply {
         group(group)
         channel(NioSocketChannel::class.java)
+        option(ChannelOption.TCP_NODELAY, true)
         remoteAddress(address)
         handler(object : ChannelInitializer<Channel>() {
             override fun initChannel(ch: Channel): Unit = ch.pipeline().run {
+                addLast("flusher", FlushConsolidationHandler(256, true))
+
                 if (security.ssl) {
                     val context = SslContextBuilder.forClient().apply {
                         when {
@@ -83,9 +89,10 @@ class TcpChannel(
         }
     }
 
-    fun send(data: ByteBuf) = lock.read<Unit> {
+    fun send(data: ByteBuf): ChannelFuture = lock.read {
         check(isOpen) { "Cannot send message. Not connected to: $address" }
-        channel.writeAndFlush(data).sync()
+        while (!channel.isWritable && channel.isActive) Thread.sleep(1)
+        channel.writeAndFlush(data)
     }
 
     fun close() = lock.write<Unit> {

@@ -107,30 +107,39 @@ fun main(args: Array<String>) = try {
 }
 
 data class SessionSettings(
-    val security: Security = Security(),
+    val sessionAlias: String,
     val host: String,
     val port: Int,
-    val sessionAlias: String,
+    val security: Security = Security(),
+    val maxMessageRate: Int = Int.MAX_VALUE,
     val handler: IProtocolHandlerSettings,
     val mangler: IProtocolManglerSettings,
-)
+) {
+    init {
+        require(host.isNotBlank()) { "'${::host.name}' is blank" }
+        require(port in 1..65535) { "'${::port.name}' must be in 1..65535 range" }
+        require(sessionAlias.isNotBlank()) { "'${::sessionAlias.name}' is blank" }
+        require(maxMessageRate > 0) { "'${::maxMessageRate.name}' must be positive" }
+    }
+}
 
 data class Settings(
     val sessions: List<SessionSettings>,
     val autoStart: Boolean = true,
     val autoStopAfter: Long = 0,
-    val totalThreads: Int = (sessions.size * 2 + 1).coerceAtLeast(3),
-    val ioThreads: Int = sessions.size.coerceAtLeast(1),
-    val maxBatchSize: Int = 100,
+    val appThreads: Int = sessions.size * 2,
+    val ioThreads: Int = sessions.size,
+    val maxBatchSize: Int = 1000,
     val maxFlushTime: Long = 1000,
     val reconnectDelay: Long = 5000,
-    val publishSentEvents: Boolean = true
+    val publishSentEvents: Boolean = true,
 ) {
     init {
-        require(totalThreads >= 2) { "At least 2 threads are required" }
-        require(ioThreads > 0) { "Amount of IO-threads must be greater than zero" }
-        require(ioThreads <= totalThreads - 1) { "Amount of IO-threads must be lower than total amount of threads" }
-        require(sessions.isNotEmpty()) { "At least 1 session is required" }
+        require(sessions.isNotEmpty()) { "'${::sessions.name}' is empty" }
+        require(appThreads > 0) { "'${::appThreads.name}' must be positive" }
+        require(ioThreads > 0) { "'${::ioThreads.name}' must be positive" }
+        require(maxBatchSize > 0) { "'${::maxBatchSize.name}' must be positive" }
+        require(maxFlushTime > 0) { "'${::maxFlushTime.name}' must be positive" }
 
         val duplicates = sessions.asSequence()
             .map { it.sessionAlias }
