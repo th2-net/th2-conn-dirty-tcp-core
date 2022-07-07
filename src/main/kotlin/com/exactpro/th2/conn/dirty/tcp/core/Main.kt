@@ -112,6 +112,8 @@ data class SessionSettings(
     val port: Int,
     val security: Security = Security(),
     val maxMessageRate: Int = Int.MAX_VALUE,
+    val autoReconnect: Boolean = true,
+    val reconnectDelay: Long = 5000,
     val handler: IProtocolHandlerSettings,
     val mangler: IProtocolManglerSettings,
 ) {
@@ -127,17 +129,17 @@ data class Settings(
     val sessions: List<SessionSettings>,
     val autoStart: Boolean = true,
     val autoStopAfter: Long = 0,
-    val appThreads: Int = sessions.size * 2,
     val ioThreads: Int = sessions.size,
+    val appThreads: Int = sessions.size * 2,
     val maxBatchSize: Int = 1000,
     val maxFlushTime: Long = 1000,
-    val reconnectDelay: Long = 5000,
     val publishSentEvents: Boolean = true,
+    val publishConnectEvents: Boolean = true,
 ) {
     init {
         require(sessions.isNotEmpty()) { "'${::sessions.name}' is empty" }
-        require(appThreads > 0) { "'${::appThreads.name}' must be positive" }
         require(ioThreads > 0) { "'${::ioThreads.name}' must be positive" }
+        require(appThreads > 0) { "'${::appThreads.name}' must be positive" }
         require(maxBatchSize > 0) { "'${::maxBatchSize.name}' must be positive" }
         require(maxFlushTime > 0) { "'${::maxFlushTime.name}' must be positive" }
 

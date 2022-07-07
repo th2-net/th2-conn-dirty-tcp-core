@@ -58,8 +58,10 @@ class Channel(
     private val defaultAddress: InetSocketAddress,
     private val defaultSecurity: Security,
     private val sessionAlias: String,
+    private val autoReconnect: Boolean,
     private val reconnectDelay: Long,
     maxMessageRate: Int,
+    private val publishConnectEvents: Boolean,
     private val handler: IProtocolHandler,
     private val mangler: IProtocolMangler,
     private val onEvent: (Event) -> Unit,
@@ -73,9 +75,12 @@ class Channel(
     private val limiter = RateLimiter(maxMessageRate)
     private val lock = ReentrantLock()
 
-    @Volatile private var reconnect = true
+    @Volatile private var reconnectEnabled = true
     @Volatile private var channel = createChannel(defaultAddress, defaultSecurity)
     private var connectFuture: Future<Unit> = CompletableFuture.completedFuture(Unit)
+
+    private val reconnect: Boolean
+        get() = autoReconnect && reconnectEnabled
 
     override val address: InetSocketAddress
         get() = channel.address
@@ -93,7 +98,7 @@ class Channel(
     private fun openAsync(address: InetSocketAddress, security: Security): Future<Unit> {
         logger.debug { "Trying to connect to: $address (session: $sessionAlias)" }
 
-        reconnect = true
+        reconnectEnabled = autoReconnect
 
         lock.withLock {
             if (isOpen) {
@@ -111,17 +116,15 @@ class Channel(
             }
 
             connectFuture = executor.submitWithRetry(reconnectDelay) {
-                if (reconnect) {
-                    onInfo("Connecting to: $address (session: $sessionAlias)")
+                if (publishConnectEvents) onInfo("Connecting to: $address (session: $sessionAlias)")
 
-                    runCatching(channel::open).onFailure {
-                        onError("Failed to connect to: $address (session: $sessionAlias)", it)
-                        throw it
-                    }
+                val result = runCatching(channel::open).onFailure {
+                    onError("Failed to connect to: $address (session: $sessionAlias)", it)
+                }
 
-                    Result.success(Unit)
-                } else {
-                    Result.failure(IllegalStateException("Stopped connection attempts to: $address (session: $sessionAlias)"))
+                when {
+                    result.isFailure && reconnect -> throw result.exceptionOrNull()!!
+                    else -> result
                 }
             }
 
@@ -180,7 +183,7 @@ class Channel(
     }
 
     override fun close() {
-        reconnect = false
+        reconnectEnabled = false
 
         lock.withLock {
             if (isOpen) {
@@ -194,7 +197,7 @@ class Channel(
     }
 
     override fun onOpen() {
-        onInfo("Connected to: $address (session: $sessionAlias)")
+        if (publishConnectEvents) onInfo("Connected to: $address (session: $sessionAlias)")
         handler.onOpen()
         mangler.onOpen()
     }
@@ -216,7 +219,7 @@ class Channel(
     override fun onError(cause: Throwable) = onError("Error on: $address (session: $sessionAlias)", cause)
 
     override fun onClose() {
-        onInfo("Disconnected from: $address (session: $sessionAlias)")
+        if (publishConnectEvents) onInfo("Disconnected from: $address (session: $sessionAlias)")
 
         runCatching(handler::onClose).onFailure(::onError)
         runCatching(mangler::onClose).onFailure(::onError)
