@@ -37,8 +37,8 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 + *ioThreads* - amount of IO threads (session-count by default)
 + *maxBatchSize* - max size of outgoing message batch (`1000` by default)
 + *maxFlushTime* - max message batch flush time (`1000` by default)
-+ *reconnectDelay* - delay between reconnects (`5000` by default)
 + *publishSentEvents* - enables/disables publish of "message sent" events (`true` by default)
++ *publishConnectEvents* - enables/disables publish of "connect/disconnect" events (`true` by default)
 + *sessions* - list of session settings
 
 ## Session settings
@@ -48,6 +48,8 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 + *port* - service port
 + *security* - connection security settings
 + *maxMessageRate* - max outgoing message rate for this session (unlimited by default)
++ *autoReconnect* - enables/disables auto-reconnect (`true` by default)
++ *reconnectDelay* - delay between reconnects (`5000` by default)
 + *handler* - handler settings
 + *mangler* - mangler settings
 
