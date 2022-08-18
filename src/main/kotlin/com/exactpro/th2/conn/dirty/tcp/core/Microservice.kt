@@ -19,14 +19,15 @@ package com.exactpro.th2.conn.dirty.tcp.core
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.event.EventUtils.toEventID
 import com.exactpro.th2.common.grpc.AnyMessage
-import com.exactpro.th2.common.grpc.Direction.FIRST
+import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.grpc.MessageID
-import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.message.direction
+import com.exactpro.th2.common.message.sessionAlias
+import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute
@@ -34,10 +35,11 @@ import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
 import com.exactpro.th2.common.schema.message.storeEvent
 import com.exactpro.th2.common.utils.event.EventBatcher
-import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandlerFactory
-import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerFactory
-import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
-import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Context
+import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
+import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.HandlerContext
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.ManglerContext
 import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
 import com.exactpro.th2.conn.dirty.tcp.core.util.logId
 import com.exactpro.th2.conn.dirty.tcp.core.util.messageId
@@ -47,7 +49,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import io.netty.channel.nio.NioEventLoopGroup
 import mu.KotlinLogging
 import java.io.InputStream
-import java.net.InetSocketAddress
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
 
@@ -57,14 +59,16 @@ class Microservice(
     private val readDictionary: (DictionaryType) -> InputStream,
     private val eventRouter: MessageRouter<EventBatch>,
     private val messageRouter: MessageRouter<MessageGroupBatch>,
-    private val handlerFactory: IProtocolHandlerFactory,
-    private val manglerFactory: IProtocolManglerFactory,
+    private val handlerFactory: IHandlerFactory,
+    private val manglerFactory: IManglerFactory,
     private val registerResource: (name: String, destructor: () -> Unit) -> Unit,
 ) {
     private val logger = KotlinLogging.logger {}
 
     private val rootEventId = rootEventId ?: eventRouter.storeEvent("Dirty TCP client".toEvent()).id
     private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId).id }
+    private val groupEventIds = ConcurrentHashMap<String, String>()
+    private val sessionEventIds = ConcurrentHashMap<String, String>()
 
     private val executor = Executors.newScheduledThreadPool(settings.appThreads + settings.ioThreads).apply {
         registerResource("executor") {
@@ -83,17 +87,11 @@ class Microservice(
         }
     }
 
-    private val incomingMessageBatcher = MessageBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
-        messageRouter.send(batch, QueueAttribute.FIRST.value)
-    }.apply {
-        registerResource("incoming-message-batcher", ::close)
-    }
-
-    private val outgoingMessageBatcher = MessageBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
-        messageRouter.send(batch, QueueAttribute.SECOND.value)
+    private val messageBatcher = MessageBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
+        messageRouter.send(batch, QueueAttribute.RAW.value)
         publishSentEvents(batch)
     }.apply {
-        registerResource("outgoing-message-batcher", ::close)
+        registerResource("message-batcher", ::close)
     }
 
     private val eventBatcher = EventBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
@@ -102,8 +100,20 @@ class Microservice(
         registerResource("event-batcher", ::close)
     }
 
-    private val channels = settings.sessions.associateBy(SessionSettings::sessionAlias, ::createChannel)
-    private val manager = ChannelManager(channels, executor)
+    private val handlers = ConcurrentHashMap<String, MutableMap<String, IHandler>>()
+
+    private val channelFactory = ChannelFactory(
+        executor,
+        eventLoopGroup,
+        eventBatcher::onEvent,
+        messageBatcher::onMessage,
+        { event, parentId -> eventRouter.storeEvent(event, parentId).id },
+        settings.publishConnectEvents
+    )
+
+    init {
+        settings.sessions.forEach(::initSession)
+    }
 
     fun run() {
         runCatching {
@@ -114,7 +124,13 @@ class Microservice(
             throw IllegalStateException("Failed to subscribe to input queue", it)
         }
 
-        if (settings.autoStart) manager.openAll(settings.autoStopAfter)
+        handlers.forEach { (group, handlers) ->
+            handlers.forEach { (session, handler) ->
+                runCatching(handler::onStart).onFailure {
+                    throw IllegalStateException("Failed to start handler: $group/$session", it)
+                }
+            }
+        }
     }
 
     private fun handleBatch(tag: String, batch: MessageGroupBatch) {
@@ -138,69 +154,62 @@ class Microservice(
             return
         }
 
-        val sessionAlias = message.sessionAlias
+        val rawMessage = message.rawMessage
+        val sessionGroup = rawMessage.sessionGroup
+        val sessionAlias = rawMessage.sessionAlias
 
-        if (sessionAlias !in channels) {
-            onError("Unknown session alias: $sessionAlias", message)
+        val handler = channelFactory.getHandler(sessionGroup, sessionAlias) ?: run {
+            onError("Unknown session group or alias: $sessionGroup/$sessionAlias", message)
             return
         }
 
-        val channel = manager.open(sessionAlias, settings.autoStopAfter)
-
-        channel.send(message.rawMessage).exceptionally {
+        handler.send(rawMessage).exceptionally {
             onError("Failed to send message", message, it)
             null
         }
     }
 
-    private fun createChannel(session: SessionSettings): Channel {
+    private fun initSession(session: SessionSettings) {
+        val sessionGroup = session.sessionGroup
         val sessionAlias = session.sessionAlias
-        val parentEventId = eventRouter.storeEvent(sessionAlias.toEvent(), rootEventId).id
-        val sendEvent: (Event) -> Unit = { onEvent(it, parentEventId) }
 
-        val handlerContext = Context(session.handler, readDictionary, sendEvent)
+        val groupEventId = groupEventIds.getOrPut(sessionGroup) {
+            eventRouter.storeEvent("Group: $sessionGroup".toEvent(), rootEventId).id
+        }
+
+        val sessionEventId = sessionEventIds.getOrPut(sessionGroup) {
+            eventRouter.storeEvent("Session: $sessionAlias".toEvent(), groupEventId).id
+        }
+
+        val sendEvent: (Event) -> Unit = { onEvent(it, sessionEventId) }
+
+        val handlerContext = HandlerContext(session.handler, sessionAlias, channelFactory, readDictionary, sendEvent)
         val handler = handlerFactory.create(handlerContext)
 
-        val manglerContext = Context(session.mangler, readDictionary, sendEvent)
+        val manglerContext = ManglerContext(session.mangler, readDictionary, sendEvent)
         val mangler = manglerFactory.create(manglerContext)
 
-        val channel = Channel(
-            InetSocketAddress(session.host, session.port),
-            session.security,
-            sessionAlias,
-            session.autoReconnect,
-            session.reconnectDelay,
-            session.maxMessageRate,
-            settings.publishConnectEvents,
-            handler,
-            mangler,
-            eventBatcher::onEvent,
-            ::onMessage,
-            executor,
-            eventLoopGroup,
-            EventID.newBuilder().setId(parentEventId).build()
-        )
+        channelFactory.registerSession(sessionGroup, sessionAlias, handler, mangler, sessionEventId)
 
-        handlerContext.channel = channel
-        manglerContext.channel = channel
-
-        registerResource("channel-$sessionAlias", channel::close)
         registerResource("handler-$sessionAlias", handler::close)
         registerResource("mangler-$sessionAlias", mangler::close)
 
-        return channel
+        handlers.getOrPut(sessionGroup, ::ConcurrentHashMap)[sessionAlias] = handler
     }
 
     private fun publishSentEvents(batch: MessageGroupBatch) {
         if (!settings.publishSentEvents) return
 
-        val eventMessages = batch.groupsList.groupBy(
-            { it.messagesList[0].eventId },
-            { it.messagesList[0].messageId }
-        )
+        val eventMessages = HashMap<EventID, MutableList<MessageID>>().apply {
+            for (group in batch.groupsList) {
+                val message = group.messagesList[0].rawMessage
+                val eventId = message.eventId ?: continue
+                if (message.direction != SECOND) continue
+                getOrPut(eventId, ::ArrayList) += message.metadata.id
+            }
+        }
 
         for ((eventId, messageIds) in eventMessages) {
-            if (eventId == null) continue
             val event = "Sent ${messageIds.size} message(s)".toEvent()
             messageIds.forEach(event::messageID)
             onEvent(event, eventId.id)
@@ -209,11 +218,6 @@ class Microservice(
 
     private fun onEvent(event: Event, parentId: String) {
         eventBatcher.onEvent(event.toProto(toEventID(parentId)))
-    }
-
-    private fun onMessage(message: RawMessage) = when (message.direction) {
-        FIRST -> incomingMessageBatcher.onMessage(message)
-        else -> outgoingMessageBatcher.onMessage(message)
     }
 
     private fun onError(error: String, message: AnyMessage, cause: Throwable? = null) {
@@ -239,7 +243,7 @@ class Microservice(
     }
 
     private fun AnyMessage.getErrorEventId(): String {
-        return (eventId ?: channels[sessionAlias]?.parentEventId)?.id ?: errorEventId
+        return (eventId?.id ?: sessionEventIds[sessionAlias]) ?: errorEventId
     }
 
     companion object {

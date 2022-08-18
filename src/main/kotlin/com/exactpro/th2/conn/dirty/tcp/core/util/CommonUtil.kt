@@ -39,8 +39,8 @@ import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.plusAssign
 import com.exactpro.th2.common.message.sequence
 import com.exactpro.th2.common.message.sessionAlias
+import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.message.toJson
-import com.exactpro.th2.common.message.toTimestamp
 import com.google.protobuf.ByteString
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
@@ -54,35 +54,32 @@ import java.util.concurrent.atomic.AtomicLong
 private val INCOMING_SEQUENCES = ConcurrentHashMap<String, () -> Long>()
 private val OUTGOING_SEQUENCES = ConcurrentHashMap<String, () -> Long>()
 
-private fun getSequenceGenerator(): () -> Long = Instant.now().run {
+private fun newSequencer(): () -> Long = Instant.now().run {
     AtomicLong(epochSecond * SECONDS.toNanos(1) + nano)
 }::incrementAndGet
 
 private fun String.getSequence(direction: Direction) = when (direction) {
-    FIRST -> INCOMING_SEQUENCES.getOrPut(this, ::getSequenceGenerator)
-    SECOND -> OUTGOING_SEQUENCES.getOrPut(this, ::getSequenceGenerator)
+    FIRST -> INCOMING_SEQUENCES.getOrPut(this, ::newSequencer)
+    SECOND -> OUTGOING_SEQUENCES.getOrPut(this, ::newSequencer)
     UNRECOGNIZED -> error("Unknown direction $direction in session: $this")
 }.invoke()
 
 fun ByteBuf.toMessage(
+    sessionGroup: String,
     sessionAlias: String,
     direction: Direction,
     metadata: Map<String, String>,
-    parentEventId: EventID? = null
-): RawMessage = RawMessage.newBuilder().run {
+    parentEventId: EventID? = null,
+): RawMessage.Builder = RawMessage.newBuilder().apply {
     parentEventId?.let { this.parentEventId = it }
 
     this.body = ByteString.copyFrom(asReadOnly().nioBuffer())
+    this.sessionGroup = sessionGroup
     this.sessionAlias = sessionAlias
     this.direction = direction
     this.sequence = sessionAlias.getSequence(direction)
 
-    this.metadataBuilder.apply {
-        putAllProperties(metadata)
-        timestamp = Instant.now().toTimestamp()
-    }
-
-    build()
+    this.metadataBuilder.putAllProperties(metadata)
 }
 
 fun String.toEvent(): Event = toEvent(PASSED)
@@ -102,10 +99,9 @@ private fun String.toEvent(
         .forEach(::bodyData)
 }
 
+fun Event.attachMessage(message: RawMessage.Builder): Event = messageID(message.metadata.id)
 
-fun Event.attachMessage(message: RawMessage): Event = messageID(message.metadata.id)
-
-fun RawMessage.toGroup(): MessageGroup = MessageGroup.newBuilder().run {
+fun RawMessage.Builder.toGroup(): MessageGroup = MessageGroup.newBuilder().run {
     plusAssign(this@toGroup)
     build()
 }
@@ -119,7 +115,7 @@ val MessageID.logId: String
         append(direction.toString().lowercase())
         append(":")
         append(sequence)
-        subsequenceList.joinTo(this, "") { ".$it" }
+        subsequenceList.forEach { append(".$it") }
     }
 
 val RawMessage.eventId: EventID?

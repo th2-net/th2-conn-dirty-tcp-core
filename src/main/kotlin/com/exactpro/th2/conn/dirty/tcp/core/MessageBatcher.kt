@@ -18,8 +18,10 @@ package com.exactpro.th2.conn.dirty.tcp.core
 
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.message.sessionAlias
+import com.exactpro.th2.common.message.sessionGroup
+import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.conn.dirty.tcp.core.util.toGroup
+import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Future
@@ -36,16 +38,17 @@ class MessageBatcher(
 ) : AutoCloseable {
     private val batches = ConcurrentHashMap<String, Batch>()
 
-    fun onMessage(message: RawMessage) = batches.getOrPut(message.sessionAlias, ::Batch).add(message)
+    fun onMessage(message: RawMessage.Builder): Unit = batches.getOrPut(message.sessionGroup, ::Batch).add(message)
 
-    override fun close() = batches.values.forEach(Batch::close)
+    override fun close(): Unit = batches.values.forEach(Batch::close)
 
     private inner class Batch : AutoCloseable {
         private val lock = ReentrantLock()
         private var batch = MessageGroupBatch.newBuilder()
         private var future: Future<*> = CompletableFuture.completedFuture(null)
 
-        fun add(message: RawMessage) = lock.withLock {
+        fun add(message: RawMessage.Builder) = lock.withLock {
+            message.metadataBuilder.timestamp = Instant.now().toTimestamp()
             batch.addGroups(message.toGroup())
 
             when (batch.groupsCount) {

@@ -31,7 +31,7 @@ class Pipe<E>(
 ) : Runnable, AutoCloseable {
     private val size = AtomicInteger()
 
-    @Volatile var isOpen = true
+    @Volatile var isOpen: Boolean = true
         private set
 
     fun send(item: E, timeout: Long = 0): Boolean {

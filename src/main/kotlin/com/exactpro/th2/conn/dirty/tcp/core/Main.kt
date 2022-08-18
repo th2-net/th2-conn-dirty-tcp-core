@@ -19,11 +19,10 @@
 package com.exactpro.th2.conn.dirty.tcp.core
 
 import com.exactpro.th2.common.schema.factory.CommonFactory
-import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandlerFactory
-import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandlerSettings
-import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerFactory
-import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolManglerSettings
-import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel.Security
+import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerSettings
+import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerSettings
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.load
 import com.fasterxml.jackson.databind.json.JsonMapper
@@ -58,8 +57,8 @@ fun main(args: Array<String>) = try {
         CommonFactory()
     }.apply { resources += "factory" to ::close }
 
-    val handlerFactory = load<IProtocolHandlerFactory>()
-    val manglerFactory = load<IProtocolManglerFactory?>() ?: run {
+    val handlerFactory = load<IHandlerFactory>()
+    val manglerFactory = load<IManglerFactory?>() ?: run {
         LOGGER.warn { "No mangler was found. Using a dummy one" }
         DummyManglerFactory
     }
@@ -68,8 +67,8 @@ fun main(args: Array<String>) = try {
     LOGGER.info { "Loaded protocol mangler factory: ${manglerFactory.name}" }
 
     val module = SimpleModule()
-        .addAbstractTypeMapping(IProtocolHandlerSettings::class.java, handlerFactory.settings)
-        .addAbstractTypeMapping(IProtocolManglerSettings::class.java, manglerFactory.settings)
+        .addAbstractTypeMapping(IHandlerSettings::class.java, handlerFactory.settings)
+        .addAbstractTypeMapping(IManglerSettings::class.java, manglerFactory.settings)
 
     val mapper = JsonMapper.builder()
         .addModule(KotlinModule(nullIsSameAsDefault = true))
@@ -108,27 +107,18 @@ fun main(args: Array<String>) = try {
 
 data class SessionSettings(
     val sessionAlias: String,
-    val host: String,
-    val port: Int,
-    val security: Security = Security(),
-    val maxMessageRate: Int = Int.MAX_VALUE,
-    val autoReconnect: Boolean = true,
-    val reconnectDelay: Long = 5000,
-    val handler: IProtocolHandlerSettings,
-    val mangler: IProtocolManglerSettings,
+    val sessionGroup: String = sessionAlias,
+    val handler: IHandlerSettings,
+    val mangler: IManglerSettings,
 ) {
     init {
-        require(host.isNotBlank()) { "'${::host.name}' is blank" }
-        require(port in 1..65535) { "'${::port.name}' must be in 1..65535 range" }
         require(sessionAlias.isNotBlank()) { "'${::sessionAlias.name}' is blank" }
-        require(maxMessageRate > 0) { "'${::maxMessageRate.name}' must be positive" }
+        require(sessionGroup.isNotBlank()) { "'${::sessionGroup.name}' is blank" }
     }
 }
 
 data class Settings(
     val sessions: List<SessionSettings>,
-    val autoStart: Boolean = true,
-    val autoStopAfter: Long = 0,
     val ioThreads: Int = sessions.size,
     val appThreads: Int = sessions.size * 2,
     val maxBatchSize: Int = 1000,

@@ -28,7 +28,7 @@ fun <T> ScheduledExecutorService.submitWithRetry(delay: Long, task: Supplier<Res
             try {
                 task.get().onSuccess(::complete).onFailure(::completeExceptionally)
             } catch (e: Exception) {
-                schedule(this, delay, MILLISECONDS)
+                if (!isCancelled) schedule(this, delay, MILLISECONDS)
             }
         }
     })

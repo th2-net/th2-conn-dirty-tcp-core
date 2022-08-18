@@ -16,23 +16,38 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
+import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.grpc.RawMessage
 import io.netty.buffer.ByteBuf
+import java.util.concurrent.CompletableFuture
 import javax.annotation.concurrent.ThreadSafe
 
 /**
- * Handles protocol messages and events, maintains session on a single [channel][IChannel]
+ * Handles protocol messages and events, maintains session on a set of [channels][IChannel] belonging to a single session
  */
 @ThreadSafe
-interface IProtocolHandler : AutoCloseable {
+interface IHandler : AutoCloseable {
     /**
-     * This method is called after a corresponding channel has been opened (e.g. TCP connection is established).
+     * Sends provided [message]
+     */
+    fun send(message: RawMessage): CompletableFuture<MessageID>
+
+    /**
+     * This method is called when service is started.
+     *
+     * For example, it can be used to create main session channel
+     */
+    fun onStart(): Unit
+
+    /**
+     * This method is called after a corresponding [channel] has been opened (e.g. TCP connection is established).
      *
      * For example, it can be used to perform protocol startup routine (e.g. send a logon)
      */
-    fun onOpen() = Unit
+    fun onOpen(channel: IChannel): Unit = Unit
 
     /**
-     * This method is called when data is received through a corresponding channel.
+     * This method is called when data is received through a corresponding [channel].
      *
      * Purpose of this method is to read a single message from this [buffer] (if any) and return it as a separate buffer.
      *
@@ -46,10 +61,10 @@ interface IProtocolHandler : AutoCloseable {
      *
      * @return buffer with a single protocol message or `null` if the buffer doesn't contain a complete message
      */
-    fun onReceive(buffer: ByteBuf): ByteBuf?
+    fun onReceive(channel: IChannel, buffer: ByteBuf): ByteBuf?
 
     /**
-     * This method is called for each [message] read from a corresponding channel.
+     * This method is called for each [message] read from a corresponding [channel].
      *
      * It should analyze the message and return corresponding metadata.
      *
@@ -59,10 +74,10 @@ interface IProtocolHandler : AutoCloseable {
      *
      * @return message metadata
      */
-    fun onIncoming(message: ByteBuf): Map<String, String> = mapOf()
+    fun onIncoming(channel: IChannel, message: ByteBuf): Map<String, String> = mapOf()
 
     /**
-     * This method is can be called before sending [message] to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).
+     * This method is called before sending [message] to a corresponding [channel] (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).
      *
      * It should analyze message and its metadata and modify them (e.g. add header or a metadata property) if required.
      *
@@ -72,24 +87,19 @@ interface IProtocolHandler : AutoCloseable {
      * @param message mutable buffer with outgoing message
      * @param metadata message metadata
      */
-    fun onOutgoing(message: ByteBuf, metadata: MutableMap<String, String>) = Unit
+    fun onOutgoing(channel: IChannel, message: ByteBuf, metadata: MutableMap<String, String>): Unit = Unit
 
     /**
-     * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).
+     * This method is called after a corresponding [channel] has been closed (e.g. TCP connection is closed).
      *
      * For example, it can be used to perform cleanup session-related resources and schedule reconnect
      */
-    fun onClose() = Unit
+    fun onClose(channel: IChannel): Unit = Unit
 
     /**
      * This method is called when microservice shutdown process was initiated
      *
      * For example, it can be used to clean-up long-living resources (executors, schedulers, etc.)
      */
-    override fun close() = Unit
+    override fun close(): Unit = Unit
 }
-
-
-interface IProtocolHandlerSettings
-
-interface IProtocolHandlerFactory : IFactory<IProtocolHandler, IProtocolHandlerSettings>
