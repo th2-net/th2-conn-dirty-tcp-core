@@ -78,17 +78,20 @@ spec:
     autoStopAfter: 0
     maxBatchSize: 100
     maxFlushTime: 1000
-    reconnectDelay: 5000
     publishSentEvents: true
+    publishConnectEvents: true
     sessions:
       - sessionAlias: client
         security:
           ssl: false
           sni: false
-          certFile: ${secret_path:certSecret}
+          certFile: ${secret_path:cert_secret}
           acceptAllCerts: false
         host: 127.0.0.1
         port: 4567
+        maxMessageRate: 100000
+        autoReconnect: true
+        reconnectDelay: 5000
         handler: ... # mangler implementation settings
         mangler: ... # handler implementation settings
   pins:
@@ -128,6 +131,20 @@ spec:
 ```
 
 # Changelog
+
+## 1.0.0
+
+* allow mangler to update metadata
+* perform handle-mangle-send sequence automatically
+* perform reconnect asynchronously
+* event batching
+* SNI support via `security.sni` option
+* ability load server certificate from file via `security.certFile` option
+* ability to accept all server certificates via `security.acceptAllCerts` option
+* sending is throttled by network buffer instead of sending acknowledgement
+* reconnect can be disabled via `autoReconnect` option
+* reconnect events can be disabled via `publishConnectEvents` option
+* per-session message rate throttling via `maxMessageRate` option
 
 ## 0.0.5
 
