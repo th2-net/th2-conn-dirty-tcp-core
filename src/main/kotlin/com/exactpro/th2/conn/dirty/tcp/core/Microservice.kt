@@ -155,8 +155,8 @@ class Microservice(
         }
 
         val rawMessage = message.rawMessage
-        val sessionGroup = rawMessage.sessionGroup
         val sessionAlias = rawMessage.sessionAlias
+        val sessionGroup = rawMessage.sessionGroup.ifBlank { sessionAlias }
 
         val handler = channelFactory.getHandler(sessionGroup, sessionAlias) ?: run {
             onError("Unknown session group or alias: $sessionGroup/$sessionAlias", message)
