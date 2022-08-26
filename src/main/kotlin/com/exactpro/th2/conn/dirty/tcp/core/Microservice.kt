@@ -87,7 +87,12 @@ class Microservice(
         }
     }
 
-    private val messageBatcher = MessageBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
+    private val messageBatcher = MessageBatcher(
+        settings.maxBatchSize,
+        settings.maxFlushTime,
+        if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
+        executor
+    ) { batch ->
         messageRouter.send(batch, QueueAttribute.RAW.value)
         publishSentEvents(batch)
     }.apply {

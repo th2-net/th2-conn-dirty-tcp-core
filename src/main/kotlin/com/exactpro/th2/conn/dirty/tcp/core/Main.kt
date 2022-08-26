@@ -123,6 +123,7 @@ data class Settings(
     val appThreads: Int = sessions.size * 2,
     val maxBatchSize: Int = 1000,
     val maxFlushTime: Long = 1000,
+    val batchByGroup: Boolean = true,
     val publishSentEvents: Boolean = true,
     val publishConnectEvents: Boolean = true,
 ) {

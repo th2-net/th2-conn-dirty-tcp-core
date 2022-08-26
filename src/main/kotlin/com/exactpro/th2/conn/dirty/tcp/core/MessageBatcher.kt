@@ -18,6 +18,8 @@ package com.exactpro.th2.conn.dirty.tcp.core
 
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.message.direction
+import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.conn.dirty.tcp.core.util.toGroup
@@ -30,15 +32,19 @@ import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
+val GROUP_SELECTOR: (RawMessage.Builder) -> Any = { it.sessionGroup }
+val ALIAS_SELECTOR: (RawMessage.Builder) -> Any = { it.sessionAlias to it.direction }
+
 class MessageBatcher(
     private val maxBatchSize: Int = 100,
     private val maxFlushTime: Long = 1000,
+    private val batchSelector: (RawMessage.Builder) -> Any,
     private val executor: ScheduledExecutorService,
-    private val onBatch: (MessageGroupBatch) -> Unit
+    private val onBatch: (MessageGroupBatch) -> Unit,
 ) : AutoCloseable {
-    private val batches = ConcurrentHashMap<String, Batch>()
+    private val batches = ConcurrentHashMap<Any, Batch>()
 
-    fun onMessage(message: RawMessage.Builder): Unit = batches.getOrPut(message.sessionGroup, ::Batch).add(message)
+    fun onMessage(message: RawMessage.Builder): Unit = batches.getOrPut(batchSelector(message), ::Batch).add(message)
 
     override fun close(): Unit = batches.values.forEach(Batch::close)
 
