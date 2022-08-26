@@ -21,8 +21,10 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.conn.dirty.tcp.core.util.toGroup
+import mu.KotlinLogging
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
@@ -65,11 +67,15 @@ class MessageBatcher(
 
         private fun send() = lock.withLock<Unit> {
             if (batch.groupsCount == 0) return
-            batch.build().runCatching(onBatch)
+            batch.build().runCatching(onBatch).onFailure { LOGGER.error(it) { "cannot publish batch: ${batch.toJson()}" } }
             batch.clearGroups()
             future.cancel(false)
         }
 
         override fun close() = send()
+    }
+
+    companion object {
+        private val LOGGER = KotlinLogging.logger { }
     }
 }
