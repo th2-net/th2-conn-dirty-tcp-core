@@ -67,7 +67,7 @@ class MessageBatcher(
 
         private fun send() = lock.withLock<Unit> {
             if (batch.groupsCount == 0) return
-            batch.build().runCatching(onBatch).onFailure { LOGGER.error(it) { "cannot publish batch: ${batch.toJson()}" } }
+            batch.build().runCatching(onBatch).onFailure { LOGGER.error(it) { "Failed to publish batch: ${batch.toJson()}" } }
             batch.clearGroups()
             future.cancel(false)
         }

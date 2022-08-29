@@ -182,7 +182,7 @@ class Microservice(
             eventRouter.storeEvent("Group: $sessionGroup".toEvent(), rootEventId).id
         }
 
-        val sessionEventId = sessionEventIds.getOrPut(sessionGroup) {
+        val sessionEventId = sessionEventIds.getOrPut(sessionAlias) {
             eventRouter.storeEvent("Session: $sessionAlias".toEvent(), groupEventId).id
         }
 
