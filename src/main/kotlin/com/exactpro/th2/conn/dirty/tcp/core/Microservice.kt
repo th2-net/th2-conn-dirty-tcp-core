@@ -121,20 +121,20 @@ class Microservice(
     }
 
     fun run() {
-        runCatching {
-            checkNotNull(messageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE))
-        }.onSuccess { monitor ->
-            registerResource("raw-monitor", monitor::unsubscribe)
-        }.onFailure {
-            throw IllegalStateException("Failed to subscribe to input queue", it)
-        }
-
         handlers.forEach { (group, handlers) ->
             handlers.forEach { (session, handler) ->
                 runCatching(handler::onStart).onFailure {
                     throw IllegalStateException("Failed to start handler: $group/$session", it)
                 }
             }
+        }
+
+        runCatching {
+            checkNotNull(messageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE))
+        }.onSuccess { monitor ->
+            registerResource("raw-monitor", monitor::unsubscribe)
+        }.onFailure {
+            throw IllegalStateException("Failed to subscribe to input queue", it)
         }
     }
 

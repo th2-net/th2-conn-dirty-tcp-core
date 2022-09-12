@@ -94,7 +94,7 @@ interface IChannel {
      */
     fun send(
         message: ByteBuf,
-        metadata: Map<String, String> = mapOf(),
+        metadata: MutableMap<String, String> = mutableMapOf(),
         eventId: EventID? = null,
         mode: SendMode = HANDLE_AND_MANGLE,
     ): CompletableFuture<MessageID>

@@ -27,14 +27,11 @@ import com.exactpro.th2.conn.dirty.tcp.core.RateLimiter
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode
-import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode.HANDLE_AND_MANGLE
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IMangler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.ITcpChannelHandler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.TcpChannel
 import com.exactpro.th2.conn.dirty.tcp.core.util.attachMessage
-import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
-import com.exactpro.th2.conn.dirty.tcp.core.util.toByteBuf
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toMessage
@@ -140,25 +137,12 @@ class Channel(
         }
     }
 
-    fun send(message: RawMessage): CompletableFuture<MessageID> = sendInternal(
-        message = message.body.toByteBuf(),
-        metadata = message.metadata.propertiesMap.toMutableMap(),
-        eventId = message.eventId
-    )
-
-    override fun send(message: ByteBuf, metadata: Map<String, String>, eventId: EventID?, mode: SendMode): CompletableFuture<MessageID> = sendInternal(
-        message = message,
-        metadata = metadata.toMutableMap(),
-        eventId = eventId,
-        mode = mode
-    )
-
-    private fun sendInternal(
+    override fun send(
         message: ByteBuf,
         metadata: MutableMap<String, String>,
-        eventId: EventID? = null,
-        mode: SendMode = HANDLE_AND_MANGLE,
-    ) = CompletableFuture<MessageID>().apply {
+        eventId: EventID?,
+        mode: SendMode,
+    ): CompletableFuture<MessageID> = CompletableFuture<MessageID>().apply {
         try {
             lock.lock()
             limiter.acquire()
