@@ -105,7 +105,7 @@ class ChannelFactory(
         if (!context.isRoot) sessions -= sessionAlias
     }
 
-    fun getHandler(sessionGroup: String, sessionAlias: String): IHandler? {
+    fun getHandler(sessionGroup: String, sessionAlias: String): IHandler? = synchronized(this) {
         return sessions[sessionAlias]?.takeIf { it.group == sessionGroup }?.handler
     }
 
