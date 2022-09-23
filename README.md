@@ -31,25 +31,19 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 
 # Configuration
 
-+ *autoStart* - enables/disable auto-starting of session on box start (`true` by default)
-+ *autoStopAfter* - time in seconds after which session will be automatically stopped (`0` by default = disabled)
-+ *appThreads* - amount of non-IO threads (session-count * 2 by default)
++ *sessions* - list of session settings
 + *ioThreads* - amount of IO threads (session-count by default)
++ *appThreads* - amount of non-IO threads (session-count * 2 by default)
 + *maxBatchSize* - max size of outgoing message batch (`1000` by default)
 + *maxFlushTime* - max message batch flush time (`1000` by default)
++ *batchByGroup* - batch messages by group instead of session alias and direction (`true` by default)
 + *publishSentEvents* - enables/disables publish of "message sent" events (`true` by default)
 + *publishConnectEvents* - enables/disables publish of "connect/disconnect" events (`true` by default)
-+ *sessions* - list of session settings
 
 ## Session settings
 
 + *sessionAlias* - session alias for incoming/outgoing th2 messages
-+ *host* - service host
-+ *port* - service port
-+ *security* - connection security settings
-+ *maxMessageRate* - max outgoing message rate for this session (unlimited by default)
-+ *autoReconnect* - enables/disables auto-reconnect (`true` by default)
-+ *reconnectDelay* - delay between reconnects (`5000` by default)
++ *sessionGroup* - session group for incoming/outgoing th2 messages
 + *handler* - handler settings
 + *mangler* - mangler settings
 
@@ -76,23 +70,23 @@ spec:
   custom-config:
     autoStart: true
     autoStopAfter: 0
-    maxBatchSize: 100
+    maxBatchSize: 1000
     maxFlushTime: 1000
     publishSentEvents: true
     publishConnectEvents: true
     sessions:
       - sessionAlias: client
-        security:
-          ssl: false
-          sni: false
-          certFile: ${secret_path:cert_secret}
-          acceptAllCerts: false
-        host: 127.0.0.1
-        port: 4567
-        maxMessageRate: 100000
-        autoReconnect: true
-        reconnectDelay: 5000
-        handler: ... # mangler implementation settings
+        handler: # mangler implementation settings
+          security:
+            ssl: false
+            sni: false
+            certFile: ${secret_path:cert_secret}
+            acceptAllCerts: false
+          host: 127.0.0.1
+          port: 4567
+          maxMessageRate: 100000
+          autoReconnect: true
+          reconnectDelay: 5000
         mangler: ... # handler implementation settings
   pins:
     - name: to_send
@@ -131,6 +125,12 @@ spec:
 ```
 
 # Changelog
+
+## 2.0.0
+
+* offload channel management to handler
+* allow handler to handle multiple channels
+* add support for session groups
 
 ## 1.0.0
 

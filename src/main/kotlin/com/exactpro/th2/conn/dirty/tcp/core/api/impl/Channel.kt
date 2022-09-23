@@ -25,131 +25,124 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
 import com.exactpro.th2.conn.dirty.tcp.core.RateLimiter
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
+import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode
-import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode.HANDLE_AND_MANGLE
-import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolHandler
-import com.exactpro.th2.conn.dirty.tcp.core.api.IProtocolMangler
+import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
+import com.exactpro.th2.conn.dirty.tcp.core.api.IMangler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.ITcpChannelHandler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.TcpChannel
-import com.exactpro.th2.conn.dirty.tcp.core.util.asExpandable
 import com.exactpro.th2.conn.dirty.tcp.core.util.attachMessage
-import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
-import com.exactpro.th2.conn.dirty.tcp.core.util.submitWithRetry
-import com.exactpro.th2.conn.dirty.tcp.core.util.toByteBuf
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toMessage
+import com.exactpro.th2.netty.bytebuf.util.asExpandable
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.channel.EventLoopGroup
 import mu.KotlinLogging
-import org.jctools.queues.MpscUnboundedArrayQueue
-import java.io.File
+import org.jctools.queues.SpscUnboundedArrayQueue
 import java.net.InetSocketAddress
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.Future
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import com.exactpro.th2.common.event.Event as CommonEvent
+import io.netty.util.concurrent.Future as NettyFuture
 
 class Channel(
-    private val defaultAddress: InetSocketAddress,
-    private val defaultSecurity: Security,
-    private val sessionAlias: String,
+    override val address: InetSocketAddress,
+    override val security: Security,
+    override val attributes: Map<String, Any>,
+    override val sessionGroup: String,
+    override val sessionAlias: String,
     private val autoReconnect: Boolean,
     private val reconnectDelay: Long,
     maxMessageRate: Int,
     private val publishConnectEvents: Boolean,
-    private val handler: IProtocolHandler,
-    private val mangler: IProtocolMangler,
+    private val handler: IHandler,
+    private val mangler: IMangler,
     private val onEvent: (Event) -> Unit,
-    private val onMessage: (RawMessage) -> Unit,
+    private val onMessage: (RawMessage.Builder) -> Unit,
     private val executor: ScheduledExecutorService,
-    private val eventLoopGroup: EventLoopGroup,
-    val parentEventId: EventID,
+    eventLoopGroup: EventLoopGroup,
+    val eventId: EventID,
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
-    private val ioEvents = executor.newPipe("io-events-$sessionAlias", MpscUnboundedArrayQueue(65_536), Runnable::run)
+    private val events = executor.newPipe("io-events-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)
     private val limiter = RateLimiter(maxMessageRate)
+    private val channel = TcpChannel(address, security, eventLoopGroup, events::send, this)
     private val lock = ReentrantLock()
 
     @Volatile private var reconnectEnabled = true
-    @Volatile private var channel = createChannel(defaultAddress, defaultSecurity)
-    private var connectFuture: Future<Unit> = CompletableFuture.completedFuture(Unit)
+
+    private var openFuture = CompletableFuture.completedFuture(Unit)
+    private var closeFuture = CompletableFuture.completedFuture(Unit)
 
     private val reconnect: Boolean
         get() = autoReconnect && reconnectEnabled
 
-    override val address: InetSocketAddress
-        get() = channel.address
-
     override val isOpen: Boolean
         get() = channel.isOpen
 
-    override val security: Security
-        get() = channel.security
-
-    override fun open() = open(defaultAddress, defaultSecurity)
-
-    override fun open(address: InetSocketAddress, security: Security): Unit = openAsync(address, security).get()
-
-    private fun openAsync(address: InetSocketAddress, security: Security): Future<Unit> {
+    override fun open(): CompletableFuture<Unit> {
         logger.debug { "Trying to connect to: $address (session: $sessionAlias)" }
 
         reconnectEnabled = autoReconnect
 
         lock.withLock {
             if (isOpen) {
-                logger.warn { "Already connected to: ${channel.address} (session: $sessionAlias)" }
-                return connectFuture
+                logger.warn { "Already connected to: $address (session: $sessionAlias)" }
+                return openFuture
             }
 
-            if (!connectFuture.isDone) {
-                logger.warn { "Already connecting to: ${channel.address} (session: $sessionAlias)" }
-                return connectFuture
+            if (!openFuture.isDone) {
+                logger.warn { "Already connecting to: $address (session: $sessionAlias)" }
+                return openFuture
             }
 
-            if (address != channel.address || security != channel.security) {
-                channel = createChannel(address, security)
-            }
+            openFuture = CompletableFuture()
 
-            connectFuture = executor.submitWithRetry(reconnectDelay) {
-                if (publishConnectEvents) onInfo("Connecting to: $address (session: $sessionAlias)")
+            val connectTask = object : Runnable {
+                override fun run() {
+                    if (publishConnectEvents) onInfo("Connecting to: $address (session: $sessionAlias)")
 
-                val result = runCatching(channel::open).onFailure {
-                    onError("Failed to connect to: $address (session: $sessionAlias)", it)
+                    val channelFuture = channel.open()
+
+                    channelFuture.onSuccess { openFuture.complete(Unit) }
+
+                    channelFuture.onFailure {
+                        onError("Failed to connect to: $address (session: $sessionAlias)", it)
+
+                        when {
+                            !reconnect -> openFuture.completeExceptionally(it)
+                            !openFuture.isCancelled -> executor.schedule(this, reconnectDelay, MILLISECONDS)
+                        }
+                    }
+
+                    channelFuture.onCancel {
+                        onInfo("Cancelled connect to: $address (session: $sessionAlias)")
+
+                        when {
+                            !reconnect -> openFuture.cancel(true)
+                            !openFuture.isCancelled -> executor.schedule(this, reconnectDelay, MILLISECONDS)
+                        }
+                    }
                 }
-
-                when {
-                    result.isFailure && reconnect -> throw result.exceptionOrNull()!!
-                    else -> result
-                }
             }
 
-            return connectFuture
+            executor.execute(connectTask)
+
+            return openFuture
         }
     }
 
-    fun send(message: RawMessage): CompletableFuture<MessageID> = sendInternal(
-        message = message.body.toByteBuf(),
-        metadata = message.metadata.propertiesMap.toMutableMap(),
-        parentEventId = message.eventId
-    )
-
-    override fun send(message: ByteBuf, metadata: Map<String, String>, mode: SendMode): Future<MessageID> = sendInternal(
-        message = message,
-        metadata = metadata.toMutableMap(),
-        mode = mode
-    )
-
-    private fun sendInternal(
+    override fun send(
         message: ByteBuf,
         metadata: MutableMap<String, String>,
-        mode: SendMode = HANDLE_AND_MANGLE,
-        parentEventId: EventID? = null,
-    ) = CompletableFuture<MessageID>().apply {
+        eventId: EventID?,
+        mode: SendMode,
+    ): CompletableFuture<MessageID> = CompletableFuture<MessageID>().apply {
         try {
             lock.lock()
             limiter.acquire()
@@ -158,22 +151,21 @@ class Channel(
 
             val buffer = message.asExpandable()
 
-            if (mode.handle) handler.onOutgoing(buffer, metadata)
+            if (mode.handle) handler.onOutgoing(this@Channel, buffer, metadata)
 
-            val event = if (mode.mangle) mangler.onOutgoing(buffer, metadata) else null
-            val protoMessage = buffer.toMessage(sessionAlias, SECOND, metadata, parentEventId)
+            val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
+            val protoMessage = buffer.toMessage(sessionGroup, sessionAlias, SECOND, metadata, eventId)
 
             thenRunAsync({
-                if (mode.mangle) mangler.afterOutgoing(buffer, metadata)
-                event?.run { storeEvent(attachMessage(protoMessage), parentEventId ?: this@Channel.parentEventId) }
+                if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
+                event?.run { storeEvent(attachMessage(protoMessage), eventId ?: this@Channel.eventId) }
                 onMessage(protoMessage)
             }, executor)
 
-            channel.send(buffer.asReadOnly()).addListener {
-                when (val cause = it.cause()) {
-                    null -> complete(protoMessage.metadata.id)
-                    else -> completeExceptionally(cause)
-                }
+            channel.send(buffer.asReadOnly()).apply {
+                onSuccess { complete(protoMessage.metadata.id) }
+                onFailure { completeExceptionally(it) }
+                onCancel { cancel(true) }
             }
         } catch (e: Exception) {
             completeExceptionally(e)
@@ -182,41 +174,64 @@ class Channel(
         }
     }
 
-    override fun close() {
+    override fun close(): CompletableFuture<Unit> {
+        logger.debug { "Trying to disconnect from: $address (session: $sessionAlias)" }
+
         reconnectEnabled = false
 
         lock.withLock {
-            if (isOpen) {
-                onInfo("Disconnecting from: $address (session: $sessionAlias)")
-
-                runCatching(channel::close).onFailure {
-                    onError("Failed to disconnect from: $address (session: $sessionAlias)", it)
-                }
+            if (!isOpen) {
+                logger.warn { "Already disconnected from: $address (session: $sessionAlias)" }
+                return closeFuture
             }
+
+            if (!closeFuture.isDone) {
+                logger.warn { "Already disconnecting from: $address (session: $sessionAlias)" }
+                return closeFuture
+            }
+
+            if (publishConnectEvents) onInfo("Disconnecting from: $address (session: $sessionAlias)")
+
+            closeFuture = CompletableFuture()
+            val channelFuture = channel.close()
+
+            channelFuture.onSuccess { closeFuture.complete(Unit) }
+
+            channelFuture.onFailure {
+                onError("Failed to disconnect from: $address (session: $sessionAlias)", it)
+                closeFuture.completeExceptionally(it)
+            }
+
+            channelFuture.onCancel {
+                onInfo("Cancelled disconnect from: $address (session: $sessionAlias)")
+                closeFuture.cancel(true)
+            }
+
+            return closeFuture
         }
     }
 
     override fun onOpen() {
         if (publishConnectEvents) onInfo("Connected to: $address (session: $sessionAlias)")
-        handler.onOpen()
-        mangler.onOpen()
+        handler.onOpen(this)
+        mangler.onOpen(this)
     }
 
     override fun onReceive(buffer: ByteBuf): ByteBuf? {
         logger.trace { "Received data on '$sessionAlias' session: ${hexDump(buffer)}" }
-        return handler.onReceive(buffer)
+        return handler.onReceive(this, buffer)
     }
 
     override fun onMessage(message: ByteBuf) {
         logger.trace { "Received message on '$sessionAlias' session: ${hexDump(message)}" }
-        val metadata = handler.onIncoming(message.asReadOnly())
-        mangler.onIncoming(message.asReadOnly(), metadata)
-        val protoMessage = message.toMessage(sessionAlias, FIRST, metadata)
+        val metadata = handler.onIncoming(this, message.asReadOnly())
+        mangler.onIncoming(this, message.asReadOnly(), metadata)
+        val protoMessage = message.toMessage(sessionGroup, sessionAlias, FIRST, metadata)
         onMessage(protoMessage)
         message.release()
     }
 
-    override fun onError(cause: Throwable) = onError("Error on: $address (session: $sessionAlias)", cause)
+    override fun onError(cause: Throwable): Unit = onError("Error on: $address (session: $sessionAlias)", cause)
 
     override fun onClose() {
         if (publishConnectEvents) onInfo("Disconnected from: $address (session: $sessionAlias)")
@@ -225,34 +240,33 @@ class Channel(
         runCatching(mangler::onClose).onFailure(::onError)
 
         if (reconnect) {
-            executor.schedule({ if (!isOpen && reconnect) openAsync(defaultAddress, defaultSecurity) }, reconnectDelay, MILLISECONDS)
+            executor.schedule({ if (!isOpen && reconnect) open() }, reconnectDelay, MILLISECONDS)
         }
     }
 
     private fun onInfo(message: String) {
         logger.info(message)
-        storeEvent(message.toEvent(), parentEventId)
+        storeEvent(message.toEvent(), eventId)
     }
 
     private fun onError(message: String, cause: Throwable) {
         logger.error(message, cause)
-        storeEvent(message.toErrorEvent(cause), parentEventId)
+        storeEvent(message.toErrorEvent(cause), eventId)
     }
 
     private fun storeEvent(event: CommonEvent, parentEventId: EventID) = onEvent(event.toProto(parentEventId))
 
-    private fun createChannel(address: InetSocketAddress, security: Security) = TcpChannel(
-        address,
-        security,
-        eventLoopGroup,
-        ioEvents::send,
-        this
-    )
+    companion object {
+        fun <V, F : NettyFuture<V>> F.onSuccess(action: () -> Unit): F {
+            return addListener { if (isSuccess) action() } as F
+        }
 
-    data class Security(
-        val ssl: Boolean = false,
-        val sni: Boolean = false,
-        val certFile: File? = null,
-        val acceptAllCerts: Boolean = false,
-    )
+        fun <V, F : NettyFuture<V>> F.onFailure(action: (cause: Throwable) -> Unit): F {
+            return addListener { cause()?.run(action) } as F
+        }
+
+        fun <V, F : NettyFuture<V>> F.onCancel(action: () -> Unit): F {
+            return addListener { if (isCancelled) action() } as F
+        }
+    }
 }

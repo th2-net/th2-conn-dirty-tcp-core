@@ -18,23 +18,38 @@ package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
+import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import java.io.InputStream
+import java.net.InetSocketAddress
 import javax.annotation.concurrent.ThreadSafe
 
 /**
- * Single mangler/handler context
+ * Single handler context
  */
 @ThreadSafe
-interface IContext<T> {
+interface IHandlerContext {
     /**
-     * Returns [channel][IChannel] linked to a mangler/handler
+     * Returns settings of a [handler][IHandler]
      */
-    val channel: IChannel
+    val settings: IHandlerSettings
 
     /**
-     * Returns settings of a [handler][IProtocolHandler]/[mangler][IProtocolMangler]
+     * Creates channel for specified [address] with specified [security], [attributes] and [sessionSuffixes]
      */
-    val settings: T
+    fun createChannel(
+        address: InetSocketAddress,
+        security: Security,
+        attributes: Map<String, Any> = mapOf(),
+        autoReconnect: Boolean = true,
+        reconnectDelay: Long = 5000,
+        maxMessageRate: Int = Int.MAX_VALUE,
+        vararg sessionSuffixes: String,
+    ): IChannel
+
+    /**
+     * Destroys provided [channel]
+     */
+    fun destroyChannel(channel: IChannel)
 
     /**
      * Returns input stream with requested [dictionary]

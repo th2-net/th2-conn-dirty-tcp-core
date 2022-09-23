@@ -14,20 +14,36 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.conn.dirty.tcp.core.api.impl
+package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
-import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
-import com.exactpro.th2.conn.dirty.tcp.core.api.IContext
 import java.io.InputStream
+import javax.annotation.concurrent.ThreadSafe
 
-class Context<T>(
-    override val settings: T,
-    private val getDictionary: (DictionaryType) -> InputStream,
-    private val sendEvent: (Event) -> Unit
-) : IContext<T> {
-    override lateinit var channel: IChannel
-    override fun get(dictionary: DictionaryType) = getDictionary(dictionary)
-    override fun send(event: Event) = sendEvent(event)
+/**
+ * Single mangler context
+ */
+@ThreadSafe
+interface IManglerContext {
+    /**
+     * Returns settings of a [mangler][IMangler]
+     */
+    val settings: IManglerSettings
+
+    /**
+     * Returns input stream with requested [dictionary]
+     *
+     * @param dictionary dictionary type
+     *
+     * @return dictionary input stream
+     */
+    operator fun get(dictionary: DictionaryType): InputStream
+
+    /**
+     * Sends an [event]
+     *
+     * @param event event to send
+     */
+    fun send(event: Event)
 }

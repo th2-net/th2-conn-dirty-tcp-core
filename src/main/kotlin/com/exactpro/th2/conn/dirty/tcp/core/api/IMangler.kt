@@ -21,17 +21,17 @@ import io.netty.buffer.ByteBuf
 import javax.annotation.concurrent.ThreadSafe
 
 /**
- * Mangles protocol messages on a single [channel][IChannel]
+ * Mangles protocol messages on a set of [channels][IChannel] belonging to a single session
  */
 @ThreadSafe
-interface IProtocolMangler : AutoCloseable {
+interface IMangler : AutoCloseable {
     /**
-     * This method is called after a corresponding channel has been opened (e.g. TCP connection is established).
+     * This method is called after a corresponding [channel] has been opened (e.g. TCP connection is established).
      */
-    fun onOpen() = Unit
+    fun onOpen(channel: IChannel): Unit = Unit
 
     /**
-     * This method is called for each [message] read from a corresponding channel.
+     * This method is called for each [message] read from a corresponding [channel].
      *
      * It can be used to change mangling algorithm after a certain message was received
      *
@@ -39,10 +39,10 @@ interface IProtocolMangler : AutoCloseable {
      *
      * @return message metadata
      */
-    fun onIncoming(message: ByteBuf, metadata: Map<String, String>) = Unit
+    fun onIncoming(channel: IChannel, message: ByteBuf, metadata: Map<String, String>): Unit = Unit
 
     /**
-     * This method is can be called before sending [message] to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).
+     * This method is called before sending [message] to a corresponding [channel] (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).
      *
      * It should analyze message and its metadata and modify them (e.g. add header or a metadata property) if required.
      *
@@ -54,33 +54,29 @@ interface IProtocolMangler : AutoCloseable {
      * @param metadata message metadata
      * @return event with message modifications descriptions or `null` if there wasn't any
      */
-    fun onOutgoing(message: ByteBuf, metadata: MutableMap<String, String>): Event?
+    fun onOutgoing(channel: IChannel, message: ByteBuf, metadata: MutableMap<String, String>): Event?
 
     /**
-     * This method is called after [message] was sent to a corresponding channel (whether it'll be called or not depends on [send-mode][IChannel.SendMode])
+     * This method is called after [message] was sent to a corresponding [channel] (whether it'll be called or not depends on [send-mode][IChannel.SendMode])
      *
      * For example, it can be used close a corresponding channel after a certain message was sent
      *
      * @param message buffer with sent message
      * @param metadata message metadata
      */
-    fun afterOutgoing(message: ByteBuf, metadata: Map<String, String>) = Unit
+    fun postOutgoing(channel: IChannel, message: ByteBuf, metadata: Map<String, String>): Unit = Unit
 
     /**
-     * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).
+     * This method is called after a corresponding [channel] has been closed (e.g. TCP connection is closed).
      *
      * For example, it can be used to perform cleanup session-related resources and schedule reconnect
      */
-    fun onClose() = Unit
+    fun onClose(channel: IChannel): Unit = Unit
 
     /**
      * This method is called when microservice shutdown process was initiated
      *
      * For example, it can be used to clean-up long-living resources (executors, schedulers, etc.)
      */
-    override fun close() = Unit
+    override fun close(): Unit = Unit
 }
-
-interface IProtocolManglerSettings
-
-interface IProtocolManglerFactory : IFactory<IProtocolMangler, IProtocolManglerSettings>

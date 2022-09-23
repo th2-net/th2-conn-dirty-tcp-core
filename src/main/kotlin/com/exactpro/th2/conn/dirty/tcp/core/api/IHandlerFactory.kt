@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2022 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,7 +16,9 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
-interface IFactory<I, S> {
+interface IHandlerSettings
+
+interface IHandlerFactory {
     /**
      * Returns factory name
      */
@@ -25,7 +27,7 @@ interface IFactory<I, S> {
     /**
      * Returns settings class of entities produced by this factory
      */
-    val settings: Class<out S>
+    val settings: Class<out IHandlerSettings>
 
     /**
      * Creates an entity with provided [context]
@@ -33,5 +35,5 @@ interface IFactory<I, S> {
      * @param context entity context
      * @return entity instance
      */
-    fun create(context: IContext<S>): I
+    fun create(context: IHandlerContext): IHandler
 }

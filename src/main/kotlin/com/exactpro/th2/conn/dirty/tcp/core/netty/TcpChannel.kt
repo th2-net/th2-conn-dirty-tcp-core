@@ -16,11 +16,12 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core.netty
 
-import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel.Security
+import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import com.exactpro.th2.conn.dirty.tcp.core.netty.handlers.ExceptionHandler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.handlers.MainHandler
 import io.netty.bootstrap.Bootstrap
 import io.netty.buffer.ByteBuf
+import io.netty.buffer.ByteBufAllocator
 import io.netty.channel.Channel
 import io.netty.channel.ChannelFuture
 import io.netty.channel.ChannelInitializer
@@ -31,7 +32,6 @@ import io.netty.handler.flush.FlushConsolidationHandler
 import io.netty.handler.ssl.SslContextBuilder
 import io.netty.handler.ssl.SslHandler
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory
-import mu.KotlinLogging
 import java.net.InetSocketAddress
 import java.util.concurrent.Executor
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -39,66 +39,70 @@ import kotlin.concurrent.read
 import kotlin.concurrent.write
 
 class TcpChannel(
-    val address: InetSocketAddress,
-    val security: Security,
+    private val address: InetSocketAddress,
+    security: Security,
     group: EventLoopGroup,
     executor: Executor,
     handler: ITcpChannelHandler,
 ) {
-    private val logger = KotlinLogging.logger {}
     private val lock = ReentrantReadWriteLock()
-    private lateinit var channel: Channel
+
     private val bootstrap = Bootstrap().apply {
         group(group)
         channel(NioSocketChannel::class.java)
         option(ChannelOption.TCP_NODELAY, true)
         remoteAddress(address)
-        handler(object : ChannelInitializer<Channel>() {
-            override fun initChannel(ch: Channel): Unit = ch.pipeline().run {
-                addLast("flusher", FlushConsolidationHandler(256, true))
-
-                if (security.ssl) {
-                    val context = SslContextBuilder.forClient().apply {
-                        when {
-                            security.acceptAllCerts -> trustManager(InsecureTrustManagerFactory.INSTANCE)
-                            security.certFile != null -> trustManager(security.certFile)
-                        }
-                    }.build()
-
-                    val engine = when (security.sni) {
-                        true -> context.newEngine(ch.alloc(), address.hostName, address.port)
-                        else -> context.newEngine(ch.alloc())
-                    }
-
-                    addLast("ssl", SslHandler(engine))
-                }
-
-                addLast("main", MainHandler(handler::onOpen, handler::onReceive, handler::onMessage, handler::onClose, executor::execute))
-                addLast("exception", ExceptionHandler(handler::onError, executor::execute))
-            }
-        })
+        handler(ChannelHandler(address, security, executor, handler))
     }
+
+    private lateinit var channel: Channel
 
     val isOpen: Boolean
         get() = lock.read { ::channel.isInitialized && channel.isActive }
 
-    fun open() = lock.write {
-        when (isOpen) {
-            true -> logger.warn { "Already connected to: $address" }
-            else -> channel = bootstrap.connect().sync().channel()
-        }
+    fun open(): ChannelFuture = lock.write {
+        if (!isOpen) return bootstrap.connect().apply { channel = channel() }
+        return channel.newFailedFuture(IllegalStateException("Already connected to: $address"))
     }
 
     fun send(data: ByteBuf): ChannelFuture = lock.read {
-        check(isOpen) { "Cannot send message. Not connected to: $address" }
+        if (!isOpen) return channel.newFailedFuture(IllegalStateException("Cannot send message. Not connected to: $address"))
         while (!channel.isWritable && channel.isActive) Thread.sleep(1)
         channel.writeAndFlush(data)
     }
 
-    fun close() = lock.write<Unit> {
-        when (isOpen) {
-            false -> logger.warn { "Not connected to: $address" }
-            else -> channel.close().sync()
+    fun close(): ChannelFuture = lock.write {
+        if (isOpen) return channel.close()
+        return channel.newFailedFuture(IllegalStateException("Not connected to: $address"))
+    }
+
+    private class ChannelHandler(
+        private val address: InetSocketAddress,
+        private val security: Security,
+        private val executor: Executor,
+        private val handler: ITcpChannelHandler,
+    ) : ChannelInitializer<Channel>() {
+        override fun initChannel(ch: Channel): Unit = ch.pipeline().run {
+            addLast("flusher", FlushConsolidationHandler(256, true))
+            if (security.ssl) addLast("ssl", createSslHandler(address, security, ch.alloc()))
+            addLast("main", MainHandler(handler::onOpen, handler::onReceive, handler::onMessage, handler::onClose, executor::execute))
+            addLast("exception", ExceptionHandler(handler::onError, executor::execute))
+        }
+
+        private fun createSslHandler(address: InetSocketAddress, security: Security, allocator: ByteBufAllocator): SslHandler {
+            val context = SslContextBuilder.forClient()
+
+            when {
+                security.acceptAllCerts -> context.trustManager(InsecureTrustManagerFactory.INSTANCE)
+                security.certFile != null -> context.trustManager(security.certFile)
+            }
+
+            val engine = when (security.sni) {
+                true -> context.build().newEngine(allocator, address.hostName, address.port)
+                else -> context.build().newEngine(allocator)
+            }
+
+            return SslHandler(engine)
         }
     }
 }
