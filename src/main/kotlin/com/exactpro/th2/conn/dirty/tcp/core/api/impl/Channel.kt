@@ -47,6 +47,7 @@ import org.jctools.queues.MpscUnboundedArrayQueue
 import java.io.File
 import java.net.InetSocketAddress
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executor
 import java.util.concurrent.Future
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit.MILLISECONDS
@@ -71,7 +72,8 @@ class Channel(
     val parentEventId: EventID,
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
-    private val ioEvents = executor.newPipe("io-events-$sessionAlias", MpscUnboundedArrayQueue(65_536), Runnable::run)
+    private val ioExecutor = Executor(executor.newPipe("io-executor-$sessionAlias", MpscUnboundedArrayQueue(65_536), Runnable::run)::send)
+    private val sendExecutor = Executor(executor.newPipe("send-executor-$sessionAlias-events-$sessionAlias", MpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val limiter = RateLimiter(maxMessageRate)
     private val lock = ReentrantLock()
 
@@ -167,7 +169,7 @@ class Channel(
                 if (mode.mangle) mangler.afterOutgoing(buffer, metadata)
                 event?.run { storeEvent(attachMessage(protoMessage), parentEventId ?: this@Channel.parentEventId) }
                 onMessage(protoMessage)
-            }, executor)
+            }, sendExecutor)
 
             channel.send(buffer.asReadOnly()).addListener {
                 when (val cause = it.cause()) {
@@ -245,7 +247,7 @@ class Channel(
         address,
         security,
         eventLoopGroup,
-        ioEvents::send,
+        ioExecutor,
         this
     )
 
