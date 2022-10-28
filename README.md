@@ -132,6 +132,10 @@ spec:
 
 # Changelog
 
+## 1.0.1
+
+* use separate executor for handling sent messages to avoid reordering
+
 ## 1.0.0
 
 * allow mangler to update metadata
