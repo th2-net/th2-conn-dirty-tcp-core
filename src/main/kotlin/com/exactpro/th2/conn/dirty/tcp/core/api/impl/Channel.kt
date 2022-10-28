@@ -43,6 +43,7 @@ import mu.KotlinLogging
 import org.jctools.queues.SpscUnboundedArrayQueue
 import java.net.InetSocketAddress
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.Executor
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.locks.ReentrantLock
@@ -69,9 +70,10 @@ class Channel(
     val eventId: EventID,
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
-    private val events = executor.newPipe("io-events-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)
+    private val ioExecutor = Executor(executor.newPipe("io-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
+    private val sendExecutor = Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val limiter = RateLimiter(maxMessageRate)
-    private val channel = TcpChannel(address, security, eventLoopGroup, events::send, this)
+    private val channel = TcpChannel(address, security, eventLoopGroup, ioExecutor, this)
     private val lock = ReentrantLock()
 
     @Volatile private var reconnectEnabled = true
@@ -160,7 +162,7 @@ class Channel(
                 if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
                 event?.run { storeEvent(attachMessage(protoMessage), eventId ?: this@Channel.eventId) }
                 onMessage(protoMessage)
-            }, executor)
+            }, sendExecutor)
 
             channel.send(buffer.asReadOnly()).apply {
                 onSuccess { complete(protoMessage.metadata.id) }
