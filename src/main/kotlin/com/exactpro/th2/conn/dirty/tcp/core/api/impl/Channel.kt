@@ -51,6 +51,7 @@ import java.util.concurrent.Executor
 import java.util.concurrent.Future
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit.MILLISECONDS
+import java.util.concurrent.TimeUnit.SECONDS
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import com.exactpro.th2.common.event.Event as CommonEvent
@@ -95,7 +96,7 @@ class Channel(
 
     override fun open() = open(defaultAddress, defaultSecurity)
 
-    override fun open(address: InetSocketAddress, security: Security): Unit = openAsync(address, security).get()
+    override fun open(address: InetSocketAddress, security: Security): Unit = openAsync(address, security).get(30, SECONDS)
 
     private fun openAsync(address: InetSocketAddress, security: Security): Future<Unit> {
         logger.debug { "Trying to connect to: $address (session: $sessionAlias)" }

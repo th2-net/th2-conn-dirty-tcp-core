@@ -132,6 +132,10 @@ spec:
 
 # Changelog
 
+## 1.0.2
+
+* add 30 second timeout for synchronous channel connect
+
 ## 1.0.1
 
 * use separate executor for handling sent messages to avoid reordering
