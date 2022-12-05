@@ -62,18 +62,20 @@ class TcpChannel(
 
     fun open(): ChannelFuture = lock.write {
         if (!isOpen) return bootstrap.connect().apply { channel = channel() }
-        return channel.newFailedFuture(IllegalStateException("Already connected to: $address"))
+        return channel.newFailedFuture("Already connected to: $address")
     }
 
     fun send(data: ByteBuf): ChannelFuture = lock.read {
-        if (!isOpen) return channel.newFailedFuture(IllegalStateException("Cannot send message. Not connected to: $address"))
-        while (!channel.isWritable && channel.isActive) Thread.sleep(1)
+        if (!isOpen) return channel.newFailedFuture("Cannot send message. Not connected to: $address")
+        var timeout = FLUSH_TIMEOUT
+        while (!channel.isWritable && channel.isActive && --timeout != 0L) Thread.sleep(1)
+        if (timeout == 0L) return channel.newFailedFuture("Failed to flush channel in $FLUSH_TIMEOUT ms: $channel")
         channel.writeAndFlush(data)
     }
 
     fun close(): ChannelFuture = lock.write {
         if (isOpen) return channel.close()
-        return channel.newFailedFuture(IllegalStateException("Not connected to: $address"))
+        return channel.newFailedFuture("Not connected to: $address")
     }
 
     private class ChannelHandler(
@@ -104,5 +106,10 @@ class TcpChannel(
 
             return SslHandler(engine)
         }
+    }
+
+    companion object {
+        private const val FLUSH_TIMEOUT = 1000L
+        private fun Channel.newFailedFuture(error: String) = newFailedFuture(IllegalStateException(error))
     }
 }
