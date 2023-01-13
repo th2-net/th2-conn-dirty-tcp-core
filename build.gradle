@@ -165,9 +165,9 @@ clean {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:3.1.0')
+    api platform('com.exactpro.th2:bom:4.0.2')
 
-    implementation group: 'com.exactpro.th2', name: 'common', version: '3.31.1'
+    implementation group: 'com.exactpro.th2', name: 'common', version: '3.42.0'
     implementation group: 'com.exactpro.th2', name: 'common-utils', version: '0.0.1-dev-2427721512-SNAPSHOT'
     implementation group: 'com.exactpro.th2', name: 'grpc-conn', version: '0.0.1'
 
@@ -177,7 +177,7 @@ dependencies {
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-reflect', version: kotlin_version
 
-    implementation group: 'com.fasterxml.jackson.module', name: 'jackson-module-kotlin', version: '2.11.2'
+    implementation group: 'com.fasterxml.jackson.module', name: 'jackson-module-kotlin', version: '2.13.4'
     implementation group: 'io.github.microutils', name: 'kotlin-logging', version: '1.7.9'
     implementation group: 'io.netty', name: 'netty-all', version: '4.1.70.Final'
     implementation group: 'org.jctools', name: 'jctools-core', version: '3.3.0'
