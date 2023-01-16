@@ -74,8 +74,6 @@ interface IProtocolHandler : AutoCloseable {
      */
     fun onOutgoing(message: ByteBuf, metadata: MutableMap<String, String>) = Unit
 
-    fun getGrpcService()
-
     /**
      * This method is called after a corresponding channel has been closed (e.g. TCP connection is closed).
      *
