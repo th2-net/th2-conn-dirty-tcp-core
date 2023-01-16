@@ -126,6 +126,11 @@ spec:
 
 # Changelog
 
+## 2.1.0
+* vulnerabilities check stage
+* reusable workflow usage
+* vulnerabilities fix
+
 ## 2.0.0
 
 * offload channel management to handler
