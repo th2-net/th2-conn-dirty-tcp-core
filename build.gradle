@@ -165,14 +165,13 @@ clean {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:4.0.2')
+    api platform('com.exactpro.th2:bom:4.0.3')
 
-    implementation group: 'com.exactpro.th2', name: 'common', version: '3.42.0'
-    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '0.0.1-dev-3497139120-SNAPSHOT'
+    implementation group: 'com.exactpro.th2', name: 'common', version: '3.43.0'
+    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '0.0.2'
     implementation group: 'com.exactpro.th2', name: 'grpc-conn', version: '0.0.1'
 
-    implementation group: 'org.slf4j', name: 'slf4j-api', version: slf4j_version
-    implementation group: 'org.slf4j', name: 'slf4j-log4j12', version: slf4j_version
+    implementation "org.slf4j:slf4j-api"
 
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-reflect', version: kotlin_version

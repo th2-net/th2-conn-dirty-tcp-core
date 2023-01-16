@@ -132,6 +132,10 @@ spec:
 
 # Changelog
 
+## 1.1.0
+* fixed vulnerabilities
+* log4j version 1 support removed
+
 ## 1.0.1
 
 * use separate executor for handling sent messages to avoid reordering
