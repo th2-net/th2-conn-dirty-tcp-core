@@ -36,14 +36,12 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 + *appThreads* - amount of non-IO threads (session-count * 2 by default)
 + *maxBatchSize* - max size of outgoing message batch (`1000` by default)
 + *maxFlushTime* - max message batch flush time (`1000` by default)
-+ *batchByGroup* - batch messages by group instead of session alias and direction (`true` by default)
 + *publishSentEvents* - enables/disables publish of "message sent" events (`true` by default)
 + *publishConnectEvents* - enables/disables publish of "connect/disconnect" events (`true` by default)
 
 ## Session settings
 
 + *sessionAlias* - session alias for incoming/outgoing th2 messages
-+ *sessionGroup* - session group for incoming/outgoing th2 messages
 + *handler* - handler settings
 + *mangler* - mangler settings
 
@@ -126,6 +124,11 @@ spec:
 
 # Changelog
 
+## 2.0.3
+
+* bump `common` dependency to `3.44.0`
+* bump `common-utils` dependency to `0.0.3`
+
 ## 2.0.2
 
 * add channel flush timeout
@@ -138,7 +141,7 @@ spec:
 
 * offload channel management to handler
 * allow handler to handle multiple channels
-* add support for session groups
+* session groups support preparations
 
 ## 1.0.0
 
