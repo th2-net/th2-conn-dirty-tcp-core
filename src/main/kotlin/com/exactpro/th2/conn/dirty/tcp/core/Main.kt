@@ -27,7 +27,8 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.load
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.fasterxml.jackson.module.kotlin.KotlinFeature.NullIsSameAsDefault
+import com.fasterxml.jackson.module.kotlin.KotlinModule.Builder
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.locks.ReentrantLock
@@ -71,7 +72,7 @@ fun main(args: Array<String>) = try {
         .addAbstractTypeMapping(IManglerSettings::class.java, manglerFactory.settings)
 
     val mapper = JsonMapper.builder()
-        .addModule(KotlinModule(nullIsSameAsDefault = true))
+        .addModule(Builder().configure(NullIsSameAsDefault, true).build())
         .addModule(module)
         .build()
 
@@ -109,7 +110,7 @@ data class SessionSettings(
     val sessionAlias: String,
     val sessionGroup: String = sessionAlias,
     val handler: IHandlerSettings,
-    val mangler: IManglerSettings,
+    val mangler: IManglerSettings? = null,
 ) {
     init {
         require(sessionAlias.isNotBlank()) { "'${::sessionAlias.name}' is blank" }

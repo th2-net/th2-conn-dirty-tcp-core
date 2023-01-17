@@ -38,6 +38,7 @@ import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory.DummyMangler
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.HandlerContext
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.ManglerContext
 import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
@@ -191,9 +192,11 @@ class Microservice(
         val handlerContext = HandlerContext(session.handler, sessionAlias, channelFactory, readDictionary, sendEvent)
         val handler = handlerFactory.create(handlerContext)
 
-        val manglerContext = ManglerContext(session.mangler, readDictionary, sendEvent)
-        val mangler = manglerFactory.create(manglerContext)
-
+        val mangler = when (val settings = session.mangler) {
+            null -> DummyMangler
+            else -> manglerFactory.create(ManglerContext(settings, readDictionary, sendEvent))
+        }
+        
         channelFactory.registerSession(sessionGroup, sessionAlias, handler, mangler, sessionEventId)
 
         registerResource("handler-$sessionAlias", handler::close)
