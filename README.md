@@ -12,12 +12,12 @@ This is a core library for dirty TCP connections which takes care of:
 # Components
 
 * [channel](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IChannel.kt) - represents a single TCP connection. It is used to send messages and perform connect/disconnect. Before sending message can go through handlers depending
-  on [send-mode](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IChannel.kt#L104).
+  on [send-mode](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IChannel.kt#L120).
 
-* [handler](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IProtocolHandler.kt) - main handler which handles connection events and data. Its main purpose is to split received data stream into separate messages, maintain protocol
+* [handler](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IHandler.kt) - main handler which handles connection events and data. Its main purpose is to split received data stream into separate messages, maintain protocol
   session and prepare outgoing messages before sending.
 
-* [mangler](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IProtocolMangler.kt) - secondary connection handler. Its main purpose is to mangle outgoing messages. It can also be used to send unsolicited messages and preform
+* [mangler](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IMangler.kt) - secondary connection handler. Its main purpose is to mangle outgoing messages. It can also be used to send unsolicited messages and preform
   unexpected connections/disconnections.
 
 # Send mode
@@ -43,7 +43,9 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 
 + *sessionAlias* - session alias for incoming/outgoing th2 messages
 + *handler* - handler settings
-+ *mangler* - mangler settings
++ *mangler* - mangler settings (`null` by default)
+
+**NOTE**: if mangler settings are `null` then no mangling will be done
 
 ### Security settings
 
@@ -96,18 +98,28 @@ spec:
       settings:
         storageOnDemand: false
         queueLength: 1000
-    - name: outgoing_messages
-      connection-type: mq
-      attributes:
-        - second
-        - publish
-        - raw
     - name: incoming_messages
       connection-type: mq
       attributes:
-        - first
         - publish
+        - store
         - raw
+      filters:
+        - metadata:
+            - field-name: direction
+              expected-value: FIRST
+              operation: EQUAL
+    - name: outgoing_messages
+      connection-type: mq
+      attributes:
+        - publish
+        - store
+        - raw
+      filters:
+        - metadata:
+            - field-name: direction
+              expected-value: SECOND
+              operation: EQUAL
   extended-settings:
     externalBox:
       enabled: false
@@ -123,6 +135,10 @@ spec:
 ```
 
 # Changelog
+
+## 2.0.4
+
+* disable mangling if no mangler settings are specified
 
 ## 2.0.3
 
