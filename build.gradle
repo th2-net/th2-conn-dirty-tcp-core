@@ -165,9 +165,9 @@ clean {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:4.0.3')
+    api platform('com.exactpro.th2:bom:4.1.0')
 
-    implementation group: 'com.exactpro.th2', name: 'common', version: '3.43.0'
+    implementation group: 'com.exactpro.th2', name: 'common', version: '3.44.0'
     implementation group: 'com.exactpro.th2', name: 'common-utils', version: '0.0.2'
     implementation group: 'com.exactpro.th2', name: 'grpc-conn', version: '0.0.1'
 
