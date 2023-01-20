@@ -48,6 +48,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.sessionAlias
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import io.netty.channel.nio.NioEventLoopGroup
+import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import mu.KotlinLogging
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -88,6 +89,10 @@ class Microservice(
         }
     }
 
+    private val shaper = GlobalTrafficShapingHandler(executor, settings.sendLimit, settings.receiveLimit).apply {
+        registerResource("traffic-shaper", ::release)
+    }
+
     private val messageBatcher = MessageBatcher(
         settings.maxBatchSize,
         settings.maxFlushTime,
@@ -111,6 +116,7 @@ class Microservice(
     private val channelFactory = ChannelFactory(
         executor,
         eventLoopGroup,
+        shaper,
         eventBatcher::onEvent,
         messageBatcher::onMessage,
         { event, parentId -> eventRouter.storeEvent(event, parentId).id },

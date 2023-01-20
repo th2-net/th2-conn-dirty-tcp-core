@@ -127,6 +127,8 @@ data class Settings(
     val batchByGroup: Boolean = false,
     val publishSentEvents: Boolean = true,
     val publishConnectEvents: Boolean = true,
+    val sendLimit: Long = 0,
+    val receiveLimit: Long = 0,
 ) {
     init {
         require(sessions.isNotEmpty()) { "'${::sessions.name}' is empty" }
@@ -134,6 +136,8 @@ data class Settings(
         require(appThreads > 0) { "'${::appThreads.name}' must be positive" }
         require(maxBatchSize > 0) { "'${::maxBatchSize.name}' must be positive" }
         require(maxFlushTime > 0) { "'${::maxFlushTime.name}' must be positive" }
+        require(sendLimit >= 0) { "'${::sendLimit.name}' cannot be negative" }
+        require(receiveLimit >= 0) { "'${::receiveLimit.name}' cannot be negative" }
 
         val duplicates = sessions.asSequence()
             .map { it.sessionAlias }
