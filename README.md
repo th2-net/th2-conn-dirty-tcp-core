@@ -38,6 +38,8 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 + *maxFlushTime* - max message batch flush time (`1000` by default)
 + *publishSentEvents* - enables/disables publish of "message sent" events (`true` by default)
 + *publishConnectEvents* - enables/disables publish of "connect/disconnect" events (`true` by default)
++ *sendLimit* - global send limit in bytes (`0` by default which means no limit)
++ *receiveLimit* - global receive limit in bytes (`0` by default which means no limit)
 
 ## Session settings
 
@@ -135,6 +137,10 @@ spec:
 ```
 
 # Changelog
+
+## 2.0.5
+
+* add option to set global send/receive limit
 
 ## 2.0.4
 

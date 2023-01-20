@@ -32,6 +32,7 @@ import io.netty.handler.flush.FlushConsolidationHandler
 import io.netty.handler.ssl.SslContextBuilder
 import io.netty.handler.ssl.SslHandler
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory
+import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import java.net.InetSocketAddress
 import java.util.concurrent.Executor
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -43,6 +44,7 @@ class TcpChannel(
     security: Security,
     group: EventLoopGroup,
     executor: Executor,
+    shaper: GlobalTrafficShapingHandler,
     handler: ITcpChannelHandler,
 ) {
     private val lock = ReentrantReadWriteLock()
@@ -52,7 +54,7 @@ class TcpChannel(
         channel(NioSocketChannel::class.java)
         option(ChannelOption.TCP_NODELAY, true)
         remoteAddress(address)
-        handler(ChannelHandler(address, security, executor, handler))
+        handler(ChannelHandler(address, security, executor, shaper, handler))
     }
 
     private lateinit var channel: Channel
@@ -82,9 +84,11 @@ class TcpChannel(
         private val address: InetSocketAddress,
         private val security: Security,
         private val executor: Executor,
+        private val shaper: GlobalTrafficShapingHandler,
         private val handler: ITcpChannelHandler,
     ) : ChannelInitializer<Channel>() {
         override fun initChannel(ch: Channel): Unit = ch.pipeline().run {
+            addLast("shaper", shaper)
             addLast("flusher", FlushConsolidationHandler(256, true))
             if (security.ssl) addLast("ssl", createSslHandler(address, security, ch.alloc()))
             addLast("main", MainHandler(handler::onOpen, handler::onReceive, handler::onMessage, handler::onClose, executor::execute))
