@@ -68,10 +68,11 @@ class Channel(
     private val onMessage: (RawMessage.Builder) -> Unit,
     private val executor: ScheduledExecutorService,
     eventLoopGroup: EventLoopGroup,
-    private val shaper: GlobalTrafficShapingHandler,
+    shaper: GlobalTrafficShapingHandler,
     private val eventId: EventID,
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
+    private val bookName = eventId.bookName
     private val ioExecutor = Executor(executor.newPipe("io-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val sendExecutor = Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val limiter = RateLimiter(maxMessageRate)
@@ -158,7 +159,7 @@ class Channel(
             if (mode.handle) handler.onOutgoing(this@Channel, buffer, metadata)
 
             val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
-            val protoMessage = buffer.toMessage(sessionGroup, sessionAlias, SECOND, metadata, eventId)
+            val protoMessage = buffer.toMessage(bookName, sessionGroup, sessionAlias, SECOND, metadata, eventId)
 
             thenRunAsync({
                 if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
@@ -230,7 +231,7 @@ class Channel(
         logger.trace { "Received message on '$sessionAlias' session: ${hexDump(message)}" }
         val metadata = handler.onIncoming(this, message.asReadOnly())
         mangler.onIncoming(this, message.asReadOnly(), metadata)
-        val protoMessage = message.toMessage(sessionGroup, sessionAlias, FIRST, metadata)
+        val protoMessage = message.toMessage(bookName, sessionGroup, sessionAlias, FIRST, metadata)
         onMessage(protoMessage)
         message.release()
     }

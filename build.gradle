@@ -167,7 +167,7 @@ clean {
 dependencies {
     api platform('com.exactpro.th2:bom:4.1.0')
 
-    implementation group: 'com.exactpro.th2', name: 'common', version: '3.44.0'
+    implementation group: 'com.exactpro.th2', name: 'common', version: '5.1.0-dev-version-5-+'
     implementation group: 'com.exactpro.th2', name: 'common-utils', version: '0.0.3'
     implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
 

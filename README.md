@@ -36,6 +36,7 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 + *appThreads* - amount of non-IO threads (session-count * 2 by default)
 + *maxBatchSize* - max size of outgoing message batch (`1000` by default)
 + *maxFlushTime* - max message batch flush time (`1000` by default)
++ *batchByGroup* - batch messages by group instead of session alias and direction (`true` by default)
 + *publishSentEvents* - enables/disables publish of "message sent" events (`true` by default)
 + *publishConnectEvents* - enables/disables publish of "connect/disconnect" events (`true` by default)
 + *sendLimit* - global send limit in bytes (`0` by default which means no limit)
@@ -43,6 +44,7 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 
 ## Session settings
 
++ *sessionGroup* - session group for incoming/outgoing th2 messages (equal to session alias by default)
 + *sessionAlias* - session alias for incoming/outgoing th2 messages
 + *handler* - handler settings
 + *mangler* - mangler settings (`null` by default)
@@ -137,6 +139,10 @@ spec:
 ```
 
 # Changelog
+
+## 3.0.0
+
+* add support for session groups, books and pages
 
 ## 2.0.5
 
