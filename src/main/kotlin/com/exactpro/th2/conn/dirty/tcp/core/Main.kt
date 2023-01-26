@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -87,7 +87,8 @@ fun main(args: Array<String>) = try {
         eventRouter,
         messageRouter,
         handlerFactory,
-        manglerFactory
+        manglerFactory,
+        factory.grpcRouter
     ) { resource, destructor ->
         resources += resource to destructor
     }.run()
