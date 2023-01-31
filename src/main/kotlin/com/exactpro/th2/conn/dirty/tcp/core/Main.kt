@@ -23,7 +23,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerSettings
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerSettings
-import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.mangler.BasicManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.load
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
@@ -61,8 +61,8 @@ fun main(args: Array<String>) = try {
 
     val handlerFactory = load<IHandlerFactory>()
     val manglerFactory = load<IManglerFactory?>() ?: run {
-        LOGGER.warn { "No mangler was found. Using a dummy one" }
-        DummyManglerFactory
+        LOGGER.warn { "No mangler was found. Using a default one" }
+        BasicManglerFactory
     }
 
     LOGGER.info { "Loaded protocol handler factory: ${handlerFactory.name}" }
