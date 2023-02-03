@@ -1,4 +1,4 @@
-# Description
+# Description (3.0.0)
 
 This is a core library for dirty TCP connections which takes care of:
 

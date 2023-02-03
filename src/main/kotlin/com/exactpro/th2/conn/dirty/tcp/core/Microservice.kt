@@ -104,7 +104,11 @@ class Microservice(
         registerResource("message-batcher", ::close)
     }
 
-    private val eventBatcher = EventBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
+    private val eventBatcher = EventBatcher(
+        maxBatchSizeInItems = settings.maxBatchSize,
+        maxFlushTime = settings.maxFlushTime,
+        executor = executor
+    ) { batch ->
         eventRouter.sendAll(batch, PUBLISH.toString(), EVENT.toString())
     }.apply {
         registerResource("event-batcher", ::close)
