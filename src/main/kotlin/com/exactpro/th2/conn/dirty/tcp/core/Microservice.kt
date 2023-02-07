@@ -17,7 +17,6 @@
 package com.exactpro.th2.conn.dirty.tcp.core
 
 import com.exactpro.th2.common.event.Event
-import com.exactpro.th2.common.event.EventUtils.toEventID
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.EventBatch
@@ -30,11 +29,11 @@ import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
+import com.exactpro.th2.common.schema.message.DeliveryMetadata
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute
 import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
-import com.exactpro.th2.common.schema.message.storeEvent
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
@@ -46,6 +45,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
 import com.exactpro.th2.conn.dirty.tcp.core.util.logId
 import com.exactpro.th2.conn.dirty.tcp.core.util.messageId
 import com.exactpro.th2.conn.dirty.tcp.core.util.sessionAlias
+import com.exactpro.th2.conn.dirty.tcp.core.util.storeEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import io.netty.channel.nio.NioEventLoopGroup
@@ -57,7 +57,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
 
 class Microservice(
-    rootEventId: String?,
+    private val rootEventId: EventID,
     private val settings: Settings,
     private val readDictionary: (DictionaryType) -> InputStream,
     private val eventRouter: MessageRouter<EventBatch>,
@@ -69,10 +69,9 @@ class Microservice(
 ) {
     private val logger = KotlinLogging.logger {}
 
-    private val rootEventId = rootEventId ?: eventRouter.storeEvent("Dirty TCP client".toEvent()).id
-    private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId).id }
-    private val groupEventIds = ConcurrentHashMap<String, String>()
-    private val sessionEventIds = ConcurrentHashMap<String, String>()
+    private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId) }
+    private val groupEventIds = ConcurrentHashMap<String, EventID>()
+    private val sessionEventIds = ConcurrentHashMap<String, EventID>()
 
     private val executor = Executors.newScheduledThreadPool(settings.appThreads + settings.ioThreads).apply {
         registerResource("executor") {
@@ -107,7 +106,11 @@ class Microservice(
         registerResource("message-batcher", ::close)
     }
 
-    private val eventBatcher = EventBatcher(settings.maxBatchSize, settings.maxFlushTime, executor) { batch ->
+    private val eventBatcher = EventBatcher(
+        maxBatchSizeInItems = settings.maxBatchSize,
+        maxFlushTime = settings.maxFlushTime,
+        executor = executor
+    ) { batch ->
         eventRouter.sendAll(batch, PUBLISH.toString(), EVENT.toString())
     }.apply {
         registerResource("event-batcher", ::close)
@@ -121,7 +124,7 @@ class Microservice(
         shaper,
         eventBatcher::onEvent,
         messageBatcher::onMessage,
-        { event, parentId -> eventRouter.storeEvent(event, parentId).id },
+        eventRouter::storeEvent,
         settings.publishConnectEvents
     )
 
@@ -147,7 +150,8 @@ class Microservice(
         }
     }
 
-    private fun handleBatch(tag: String, batch: MessageGroupBatch) {
+    @Suppress("UNUSED_PARAMETER")
+    private fun handleBatch(metadata: DeliveryMetadata, batch: MessageGroupBatch) {
         batch.groupsList.forEach { group ->
             group.runCatching(::handleGroup).recoverCatching { cause ->
                 onError("Failed to handle message group", group, cause)
@@ -169,6 +173,14 @@ class Microservice(
         }
 
         val rawMessage = message.rawMessage
+
+        rawMessage.eventId?.run {
+            if (bookName != rootEventId.bookName) {
+                onError("Unexpected book name: $bookName (expected: ${rootEventId.bookName})", message)
+                return
+            }
+        }
+
         val sessionAlias = rawMessage.sessionAlias
         val sessionGroup = rawMessage.sessionGroup.ifBlank { sessionAlias }
 
@@ -188,11 +200,11 @@ class Microservice(
         val sessionAlias = session.sessionAlias
 
         val groupEventId = groupEventIds.getOrPut(sessionGroup) {
-            eventRouter.storeEvent("Group: $sessionGroup".toEvent(), rootEventId).id
+            eventRouter.storeEvent("Group: $sessionGroup".toEvent(), rootEventId)
         }
 
         val sessionEventId = sessionEventIds.getOrPut(sessionAlias) {
-            eventRouter.storeEvent("Session: $sessionAlias".toEvent(), groupEventId).id
+            eventRouter.storeEvent("Session: $sessionAlias".toEvent(), groupEventId)
         }
 
         val sendEvent: (Event) -> Unit = { onEvent(it, sessionEventId) }
@@ -228,12 +240,12 @@ class Microservice(
         for ((eventId, messageIds) in eventMessages) {
             val event = "Sent ${messageIds.size} message(s)".toEvent()
             messageIds.forEach(event::messageID)
-            onEvent(event, eventId.id)
+            onEvent(event, eventId)
         }
     }
 
-    private fun onEvent(event: Event, parentId: String) {
-        eventBatcher.onEvent(event.toProto(toEventID(parentId)))
+    private fun onEvent(event: Event, parentId: EventID) {
+        eventBatcher.onEvent(event.toProto(parentId))
     }
 
     private fun onError(error: String, message: AnyMessage, cause: Throwable? = null) {
@@ -258,8 +270,8 @@ class Microservice(
         }
     }
 
-    private fun AnyMessage.getErrorEventId(): String {
-        return (eventId?.id ?: sessionEventIds[sessionAlias]) ?: errorEventId
+    private fun AnyMessage.getErrorEventId(): EventID {
+        return eventId ?: sessionEventIds[sessionAlias] ?: errorEventId
     }
 
     companion object {

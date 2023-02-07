@@ -56,7 +56,7 @@ class MessageBatcher(
         private var future: Future<*> = CompletableFuture.completedFuture(null)
 
         fun add(message: RawMessage.Builder) = lock.withLock {
-            message.metadataBuilder.timestamp = Instant.now().toTimestamp()
+            message.metadataBuilder.idBuilder.timestamp = Instant.now().toTimestamp()
             batch.addGroups(message.toGroup())
 
             when (batch.groupsCount) {
