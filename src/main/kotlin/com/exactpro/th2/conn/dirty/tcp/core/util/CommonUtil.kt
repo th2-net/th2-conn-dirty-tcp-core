@@ -30,17 +30,22 @@ import com.exactpro.th2.common.grpc.Direction
 import com.exactpro.th2.common.grpc.Direction.FIRST
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.Direction.UNRECOGNIZED
+import com.exactpro.th2.common.grpc.EventBatch
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.message.bookName
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.plusAssign
 import com.exactpro.th2.common.message.sequence
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.message.toJson
+import com.exactpro.th2.common.schema.message.MessageRouter
+import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
+import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
 import com.google.protobuf.ByteString
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
@@ -65,15 +70,17 @@ private fun String.getSequence(direction: Direction) = when (direction) {
 }.invoke()
 
 fun ByteBuf.toMessage(
+    bookName: String,
     sessionGroup: String,
     sessionAlias: String,
     direction: Direction,
     metadata: Map<String, String>,
-    parentEventId: EventID? = null,
+    eventId: EventID? = null,
 ): RawMessage.Builder = RawMessage.newBuilder().apply {
-    parentEventId?.let { this.parentEventId = it }
+    eventId?.let { this.parentEventId = it }
 
     this.body = ByteString.copyFrom(asReadOnly().nioBuffer())
+    this.bookName = bookName
     this.sessionGroup = sessionGroup
     this.sessionAlias = sessionAlias
     this.direction = direction
@@ -101,6 +108,12 @@ private fun String.toEvent(
 
 fun Event.attachMessage(message: RawMessage.Builder): Event = messageID(message.metadata.id)
 
+fun MessageRouter<EventBatch>.storeEvent(event: Event, parentId: EventID): EventID {
+    val protoEvent = event.toProto(parentId)
+    sendAll(EventBatch.newBuilder().addEvents(protoEvent).build(), PUBLISH.toString(), EVENT.toString())
+    return protoEvent.id
+}
+
 fun RawMessage.Builder.toGroup(): MessageGroup = MessageGroup.newBuilder().run {
     plusAssign(this@toGroup)
     build()
@@ -110,10 +123,14 @@ fun ByteString.toByteBuf(): ByteBuf = asReadOnlyByteBuffer().run(Unpooled.buffer
 
 val MessageID.logId: String
     get() = buildString {
+        append(bookName)
+        append(':')
+        append(connectionId.sessionGroup)
+        append(':')
         append(connectionId.sessionAlias)
-        append(":")
+        append(':')
         append(direction.toString().lowercase())
-        append(":")
+        append(':')
         append(sequence)
         subsequenceList.forEach { append(".$it") }
     }

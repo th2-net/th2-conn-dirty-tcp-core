@@ -16,8 +16,8 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core
 
-import com.exactpro.th2.common.event.EventUtils.toEventID
 import com.exactpro.th2.common.grpc.Event
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
@@ -38,7 +38,7 @@ class ChannelFactory(
     private val shaper: GlobalTrafficShapingHandler,
     private val onEvent: (Event) -> Unit,
     private val onMessage: (RawMessage.Builder) -> Unit,
-    private val createEvent: (event: CommonEvent, parentId: String) -> String,
+    private val createEvent: (event: CommonEvent, parentId: EventID) -> EventID,
     private val publishConnectEvents: Boolean,
 ) {
     private val sessions = HashMap<String, SessionContext>()
@@ -49,7 +49,7 @@ class ChannelFactory(
         sessionAlias: String,
         handler: IHandler,
         mangler: IMangler,
-        eventId: String,
+        eventId: EventID,
     ): Unit = synchronized(this) {
         require(sessionAlias !in sessions) { "Session is already registered: $sessionAlias" }
         sessions[sessionAlias] = SessionContext(sessionGroup, handler, mangler, eventId, true)
@@ -88,7 +88,7 @@ class ChannelFactory(
             executor,
             eventLoopGroup,
             shaper,
-            toEventID(createEvent("Channel: $sessionAlias".toEvent(), context.eventId))!!
+            createEvent("Channel: $sessionAlias".toEvent(), context.eventId)
         )
 
         channels[sessionAlias] = channel
@@ -116,7 +116,7 @@ class ChannelFactory(
         val group: String,
         val handler: IHandler,
         val mangler: IMangler,
-        val eventId: String,
+        val eventId: EventID,
         val isRoot: Boolean,
     )
 }
