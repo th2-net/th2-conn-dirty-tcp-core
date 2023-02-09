@@ -42,7 +42,7 @@ class MessageBatcher(
     private val maxFlushTime: Long = 1000,
     private val batchSelector: (RawMessage.Builder) -> Any,
     private val executor: ScheduledExecutorService,
-    private val onBatch: (MessageGroupBatch) -> Unit,
+    private val onBatch: (MessageGroupBatch, Boolean) -> Unit,
 ) : AutoCloseable {
     private val batches = ConcurrentHashMap<Any, Batch>()
 
@@ -60,19 +60,23 @@ class MessageBatcher(
             batch.addGroups(message.toGroup())
 
             when (batch.groupsCount) {
-                1 -> future = executor.schedule(::send, maxFlushTime, MILLISECONDS)
-                maxBatchSize -> send()
+                1 -> future = executor.schedule({send(false)}, maxFlushTime, MILLISECONDS)
+                maxBatchSize -> send(false)
             }
         }
 
-        private fun send() = lock.withLock<Unit> {
+        private fun send(block: Boolean) = lock.withLock<Unit> {
             if (batch.groupsCount == 0) return
-            batch.build().runCatching(onBatch).onFailure { LOGGER.error(it) { "Failed to publish batch: ${batch.toJson()}" } }
+            kotlin.runCatching {
+                onBatch(batch.build(), block)
+            }.onFailure {
+                 LOGGER.error(it) { "Failed to publish batch: ${batch.toJson()}" }
+            }
             batch.clearGroups()
             future.cancel(false)
         }
 
-        override fun close() = send()
+        override fun close() = send(true)
     }
 
     companion object {

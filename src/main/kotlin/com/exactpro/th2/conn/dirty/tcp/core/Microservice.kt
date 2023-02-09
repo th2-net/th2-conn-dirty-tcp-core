@@ -100,7 +100,8 @@ class Microservice(
         settings.maxFlushTime,
         if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
         executor
-    ) { batch ->
+    ) { batch, block ->
+        if(block) Thread.sleep(2000)
         messageRouter.send(batch, QueueAttribute.RAW.value)
         publishSentEvents(batch)
     }.apply {
