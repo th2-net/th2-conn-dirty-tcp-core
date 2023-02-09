@@ -70,5 +70,5 @@ interface IHandlerContext {
     /**
      * Returns instance of class to interact with grpc service.
      */
-    fun <T> getGrpcService(serviceClass: Class<T>): T
+    fun <T: Any> getGrpcService(serviceClass: Class<T>): T
 }

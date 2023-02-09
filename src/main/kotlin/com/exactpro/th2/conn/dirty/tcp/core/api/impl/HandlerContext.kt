@@ -33,7 +33,7 @@ class HandlerContext(
     private val channelFactory: ChannelFactory,
     private val getDictionary: (DictionaryType) -> InputStream,
     private val sendEvent: (Event) -> Unit,
-    private val grpcRouter: GrpcRouter
+    private val getService: (Class<out Any>) -> Any
 ) : IHandlerContext {
     override fun createChannel(
         address: InetSocketAddress,
@@ -57,5 +57,5 @@ class HandlerContext(
     override fun destroyChannel(channel: IChannel): Unit = channelFactory.destroyChannel(channel)
     override fun get(dictionary: DictionaryType): InputStream = getDictionary(dictionary)
     override fun send(event: Event): Unit = sendEvent(event)
-    override fun <T> getGrpcService(serviceClass: Class<T>): T = grpcRouter.getService(serviceClass)
+    override fun <T : Any> getGrpcService(serviceClass: Class<T>): T = getService(serviceClass) as T
 }

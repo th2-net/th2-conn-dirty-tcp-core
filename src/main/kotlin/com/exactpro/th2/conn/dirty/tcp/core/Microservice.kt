@@ -197,7 +197,7 @@ class Microservice(
 
         val sendEvent: (Event) -> Unit = { onEvent(it, sessionEventId) }
 
-        val handlerContext = HandlerContext(session.handler, sessionAlias, channelFactory, readDictionary, sendEvent, grpcRouter)
+        val handlerContext = HandlerContext(session.handler, sessionAlias, channelFactory, readDictionary, sendEvent) {clazz -> grpcRouter.getService(clazz)}
         val handler = handlerFactory.create(handlerContext)
 
         val mangler = when (val settings = session.mangler) {
