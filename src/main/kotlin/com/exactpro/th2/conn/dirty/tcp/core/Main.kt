@@ -28,7 +28,9 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.load
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.KotlinFeature
 import com.fasterxml.jackson.module.kotlin.KotlinFeature.NullIsSameAsDefault
+import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule.Builder
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentLinkedDeque
@@ -71,10 +73,6 @@ fun main(args: Array<String>) = try {
     val module = SimpleModule()
         .addAbstractTypeMapping(IHandlerSettings::class.java, handlerFactory.settings)
         .addAbstractTypeMapping(IManglerSettings::class.java, manglerFactory.settings)
-
-    val kotlinModule = KotlinModule.Builder()
-        .configure(KotlinFeature.NullIsSameAsDefault, true)
-        .build()
 
     val mapper = JsonMapper.builder()
         .addModule(Builder().configure(NullIsSameAsDefault, true).build())
