@@ -68,15 +68,15 @@ class ChannelFactory(
         val context = sessions[sessionAlias] ?: error("Session does not exist: $sessionAlias")
         require(context.isRoot) { "Parent session is a non-root one: $sessionAlias" }
 
-        val sessionAlias = join("_", sessionAlias, *sessionSuffixes)
-        require(sessionAlias !in channels) { "Session channel already exists: $sessionAlias" }
+        val genSessionAlias = join("_", sessionAlias, *sessionSuffixes)
+        require(genSessionAlias !in channels) { "Session channel already exists: $genSessionAlias" }
 
         val channel = Channel(
             address,
             security,
             attributes,
             context.group,
-            sessionAlias,
+            genSessionAlias,
             autoReconnect,
             reconnectDelay,
             maxMessageRate,
@@ -88,13 +88,13 @@ class ChannelFactory(
             executor,
             eventLoopGroup,
             shaper,
-            createEvent("Channel: $sessionAlias".toEvent(), context.eventId)
+            createEvent("Channel: $genSessionAlias".toEvent(), context.eventId)
         )
 
-        channels[sessionAlias] = channel
+        channels[genSessionAlias] = channel
 
         if (sessionSuffixes.isNotEmpty()) {
-            sessions[sessionAlias] = context.copy(isRoot = false)
+            sessions[genSessionAlias] = context.copy(isRoot = false)
         }
 
         return channel

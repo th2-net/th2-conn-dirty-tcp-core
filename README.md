@@ -144,6 +144,11 @@ spec:
 
 * add support for session groups, books and pages
 
+## 2.1.0
+
+* allow to retrieve gRPC service from handler context
+* support JSR-310 date and time types in settings
+
 ## 2.0.5
 
 * add option to set global send/receive limit
