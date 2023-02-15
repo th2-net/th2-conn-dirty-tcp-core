@@ -1,4 +1,4 @@
-# Description
+# th2-conn-dirty-tcp-core ( 2.1.0 )
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -12,12 +12,12 @@ This is a core library for dirty TCP connections which takes care of:
 # Components
 
 * [channel](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IChannel.kt) - represents a single TCP connection. It is used to send messages and perform connect/disconnect. Before sending message can go through handlers depending
-  on [send-mode](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IChannel.kt#L104).
+  on [send-mode](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IChannel.kt#L120).
 
-* [handler](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IProtocolHandler.kt) - main handler which handles connection events and data. Its main purpose is to split received data stream into separate messages, maintain protocol
+* [handler](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IHandler.kt) - main handler which handles connection events and data. Its main purpose is to split received data stream into separate messages, maintain protocol
   session and prepare outgoing messages before sending.
 
-* [mangler](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IProtocolMangler.kt) - secondary connection handler. Its main purpose is to mangle outgoing messages. It can also be used to send unsolicited messages and preform
+* [mangler](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IMangler.kt) - secondary connection handler. Its main purpose is to mangle outgoing messages. It can also be used to send unsolicited messages and preform
   unexpected connections/disconnections.
 
 # Send mode
@@ -36,16 +36,18 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 + *appThreads* - amount of non-IO threads (session-count * 2 by default)
 + *maxBatchSize* - max size of outgoing message batch (`1000` by default)
 + *maxFlushTime* - max message batch flush time (`1000` by default)
-+ *batchByGroup* - batch messages by group instead of session alias and direction (`true` by default)
 + *publishSentEvents* - enables/disables publish of "message sent" events (`true` by default)
 + *publishConnectEvents* - enables/disables publish of "connect/disconnect" events (`true` by default)
++ *sendLimit* - global send limit in bytes (`0` by default which means no limit)
++ *receiveLimit* - global receive limit in bytes (`0` by default which means no limit)
 
 ## Session settings
 
 + *sessionAlias* - session alias for incoming/outgoing th2 messages
-+ *sessionGroup* - session group for incoming/outgoing th2 messages
 + *handler* - handler settings
-+ *mangler* - mangler settings
++ *mangler* - mangler settings (`null` by default)
+
+**NOTE**: if mangler settings are `null` then no mangling will be done
 
 ### Security settings
 
@@ -98,18 +100,28 @@ spec:
       settings:
         storageOnDemand: false
         queueLength: 1000
-    - name: outgoing_messages
-      connection-type: mq
-      attributes:
-        - second
-        - publish
-        - raw
     - name: incoming_messages
       connection-type: mq
       attributes:
-        - first
         - publish
+        - store
         - raw
+      filters:
+        - metadata:
+            - field-name: direction
+              expected-value: FIRST
+              operation: EQUAL
+    - name: outgoing_messages
+      connection-type: mq
+      attributes:
+        - publish
+        - store
+        - raw
+      filters:
+        - metadata:
+            - field-name: direction
+              expected-value: SECOND
+              operation: EQUAL
   extended-settings:
     externalBox:
       enabled: false
@@ -126,10 +138,25 @@ spec:
 
 # Changelog
 
-## 2.1.0
+## 2.1.1
 * vulnerabilities check stage
-* reusable workflow usage
-* vulnerabilities fix
+
+## 2.1.0
+* allow to retrieve gRPC service from handler context
+* support JSR-310 date and time types in settings
+
+## 2.0.5
+
+* add option to set global send/receive limit
+
+## 2.0.4
+
+* disable mangling if no mangler settings are specified
+
+## 2.0.3
+
+* bump `common` dependency to `3.44.0`
+* bump `common-utils` dependency to `0.0.3`
 
 ## 2.0.2
 
@@ -143,7 +170,7 @@ spec:
 
 * offload channel management to handler
 * allow handler to handle multiple channels
-* add support for session groups
+* session groups support preparations
 
 ## 1.0.0
 

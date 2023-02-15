@@ -26,6 +26,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IMangler
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import io.netty.channel.EventLoopGroup
+import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import java.lang.String.join
 import java.net.InetSocketAddress
 import java.util.concurrent.ScheduledExecutorService
@@ -34,6 +35,7 @@ import com.exactpro.th2.common.event.Event as CommonEvent
 class ChannelFactory(
     private val executor: ScheduledExecutorService,
     private val eventLoopGroup: EventLoopGroup,
+    private val shaper: GlobalTrafficShapingHandler,
     private val onEvent: (Event) -> Unit,
     private val onMessage: (RawMessage.Builder) -> Unit,
     private val createEvent: (event: CommonEvent, parentId: String) -> String,
@@ -85,6 +87,7 @@ class ChannelFactory(
             onMessage,
             executor,
             eventLoopGroup,
+            shaper,
             toEventID(createEvent("Channel: $sessionAlias".toEvent(), context.eventId))!!
         )
 

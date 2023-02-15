@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,8 +27,9 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.load
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.module.kotlin.KotlinFeature
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.module.kotlin.KotlinFeature.NullIsSameAsDefault
+import com.fasterxml.jackson.module.kotlin.KotlinModule.Builder
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.locks.ReentrantLock
@@ -76,7 +77,8 @@ fun main(args: Array<String>) = try {
         .build()
 
     val mapper = JsonMapper.builder()
-        .addModule(kotlinModule)
+        .addModule(Builder().configure(NullIsSameAsDefault, true).build())
+        .addModule(JavaTimeModule())
         .addModule(module)
         .build()
 
@@ -91,7 +93,8 @@ fun main(args: Array<String>) = try {
         eventRouter,
         messageRouter,
         handlerFactory,
-        manglerFactory
+        manglerFactory,
+        factory.grpcRouter
     ) { resource, destructor ->
         resources += resource to destructor
     }.run()
@@ -114,7 +117,7 @@ data class SessionSettings(
     val sessionAlias: String,
     val sessionGroup: String = sessionAlias,
     val handler: IHandlerSettings,
-    val mangler: IManglerSettings,
+    val mangler: IManglerSettings? = null,
 ) {
     init {
         require(sessionAlias.isNotBlank()) { "'${::sessionAlias.name}' is blank" }
@@ -128,9 +131,11 @@ data class Settings(
     val appThreads: Int = sessions.size * 2,
     val maxBatchSize: Int = 1000,
     val maxFlushTime: Long = 1000,
-    val batchByGroup: Boolean = true,
+    val batchByGroup: Boolean = false,
     val publishSentEvents: Boolean = true,
     val publishConnectEvents: Boolean = true,
+    val sendLimit: Long = 0,
+    val receiveLimit: Long = 0,
 ) {
     init {
         require(sessions.isNotEmpty()) { "'${::sessions.name}' is empty" }
@@ -138,6 +143,8 @@ data class Settings(
         require(appThreads > 0) { "'${::appThreads.name}' must be positive" }
         require(maxBatchSize > 0) { "'${::maxBatchSize.name}' must be positive" }
         require(maxFlushTime > 0) { "'${::maxFlushTime.name}' must be positive" }
+        require(sendLimit >= 0) { "'${::sendLimit.name}' cannot be negative" }
+        require(receiveLimit >= 0) { "'${::receiveLimit.name}' cannot be negative" }
 
         val duplicates = sessions.asSequence()
             .map { it.sessionAlias }

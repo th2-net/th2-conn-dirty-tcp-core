@@ -39,6 +39,7 @@ import com.exactpro.th2.netty.bytebuf.util.asExpandable
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.channel.EventLoopGroup
+import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import mu.KotlinLogging
 import org.jctools.queues.SpscUnboundedArrayQueue
 import java.net.InetSocketAddress
@@ -67,13 +68,14 @@ class Channel(
     private val onMessage: (RawMessage.Builder) -> Unit,
     private val executor: ScheduledExecutorService,
     eventLoopGroup: EventLoopGroup,
-    val eventId: EventID,
+    private val shaper: GlobalTrafficShapingHandler,
+    private val eventId: EventID,
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
     private val ioExecutor = Executor(executor.newPipe("io-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val sendExecutor = Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val limiter = RateLimiter(maxMessageRate)
-    private val channel = TcpChannel(address, security, eventLoopGroup, ioExecutor, this)
+    private val channel = TcpChannel(address, security, eventLoopGroup, ioExecutor, shaper, this)
     private val lock = ReentrantLock()
 
     @Volatile private var reconnectEnabled = true

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
+import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute
 import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
@@ -38,6 +39,7 @@ import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory.DummyMangler
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.HandlerContext
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.ManglerContext
 import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
@@ -47,6 +49,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.sessionAlias
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import io.netty.channel.nio.NioEventLoopGroup
+import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import mu.KotlinLogging
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
@@ -61,6 +64,7 @@ class Microservice(
     private val messageRouter: MessageRouter<MessageGroupBatch>,
     private val handlerFactory: IHandlerFactory,
     private val manglerFactory: IManglerFactory,
+    private val grpcRouter: GrpcRouter,
     private val registerResource: (name: String, destructor: () -> Unit) -> Unit,
 ) {
     private val logger = KotlinLogging.logger {}
@@ -87,6 +91,10 @@ class Microservice(
         }
     }
 
+    private val shaper = GlobalTrafficShapingHandler(executor, settings.sendLimit, settings.receiveLimit).apply {
+        registerResource("traffic-shaper", ::release)
+    }
+
     private val messageBatcher = MessageBatcher(
         settings.maxBatchSize,
         settings.maxFlushTime,
@@ -110,6 +118,7 @@ class Microservice(
     private val channelFactory = ChannelFactory(
         executor,
         eventLoopGroup,
+        shaper,
         eventBatcher::onEvent,
         messageBatcher::onMessage,
         { event, parentId -> eventRouter.storeEvent(event, parentId).id },
@@ -188,12 +197,14 @@ class Microservice(
 
         val sendEvent: (Event) -> Unit = { onEvent(it, sessionEventId) }
 
-        val handlerContext = HandlerContext(session.handler, sessionAlias, channelFactory, readDictionary, sendEvent)
+        val handlerContext = HandlerContext(session.handler, sessionAlias, channelFactory, readDictionary, sendEvent) {clazz -> grpcRouter.getService(clazz)}
         val handler = handlerFactory.create(handlerContext)
 
-        val manglerContext = ManglerContext(session.mangler, readDictionary, sendEvent)
-        val mangler = manglerFactory.create(manglerContext)
-
+        val mangler = when (val settings = session.mangler) {
+            null -> DummyMangler
+            else -> manglerFactory.create(ManglerContext(settings, readDictionary, sendEvent))
+        }
+        
         channelFactory.registerSession(sessionGroup, sessionAlias, handler, mangler, sessionEventId)
 
         registerResource("handler-$sessionAlias", handler::close)
