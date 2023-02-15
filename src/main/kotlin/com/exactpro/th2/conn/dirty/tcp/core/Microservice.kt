@@ -101,8 +101,8 @@ class Microservice(
         if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
         executor
     ) { batch, block ->
-        if(block) Thread.sleep(2000)
         messageRouter.send(batch, QueueAttribute.RAW.value)
+        if(block) Thread.sleep(2000)
         publishSentEvents(batch)
     }.apply {
         registerResource("message-batcher", ::close)
