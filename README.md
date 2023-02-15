@@ -140,8 +140,8 @@ spec:
 
 ## 2.1.0
 
-* Handler context interface changed: added option to retrieve grpc service instances.
-* JavaTimeModule added to object mapper
+* allow to retrieve gRPC service from handler context
+* support JSR-310 date and time types in settings
 
 ## 2.0.5
 
