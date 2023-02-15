@@ -1,4 +1,4 @@
-# Description
+# th2-conn-dirty-tcp-core ( 2.1.0 )
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -137,6 +137,11 @@ spec:
 ```
 
 # Changelog
+
+## 2.1.0
+
+* allow to retrieve gRPC service from handler context
+* support JSR-310 date and time types in settings
 
 ## 2.0.5
 
