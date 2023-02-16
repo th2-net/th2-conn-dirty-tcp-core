@@ -138,8 +138,10 @@ spec:
 
 # Changelog
 
-## 2.1.0
+## 2.1.1
+* vulnerabilities check stage
 
+## 2.1.0
 * allow to retrieve gRPC service from handler context
 * support JSR-310 date and time types in settings
 
