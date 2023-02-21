@@ -90,8 +90,7 @@ fun main(args: Array<String>) = try {
         messageRouter,
         handlerFactory,
         manglerFactory,
-        factory.grpcRouter,
-        factory.boxConfiguration.bookName
+        factory.grpcRouter
     ) { resource, destructor ->
         resources += resource to destructor
     }.run()

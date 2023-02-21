@@ -66,7 +66,6 @@ class Microservice(
     private val handlerFactory: IHandlerFactory,
     private val manglerFactory: IManglerFactory,
     private val grpcRouter: GrpcRouter,
-    private val bookName: String,
     private val registerResource: (name: String, destructor: () -> Unit) -> Unit,
 ) {
     private val logger = KotlinLogging.logger {}
@@ -74,6 +73,7 @@ class Microservice(
     private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId) }
     private val groupEventIds = ConcurrentHashMap<String, EventID>()
     private val sessionEventIds = ConcurrentHashMap<String, EventID>()
+    private val bookName: String = rootEventId.bookName
 
     private val executor = Executors.newScheduledThreadPool(settings.appThreads + settings.ioThreads).apply {
         registerResource("executor") {
