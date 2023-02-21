@@ -39,9 +39,9 @@ import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
-import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory.DummyMangler
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.HandlerContext
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.ManglerContext
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.mangler.NoOpMangler
 import com.exactpro.th2.conn.dirty.tcp.core.util.eventId
 import com.exactpro.th2.conn.dirty.tcp.core.util.logId
 import com.exactpro.th2.conn.dirty.tcp.core.util.messageId
@@ -201,7 +201,7 @@ class Microservice(
         val handler = handlerFactory.create(handlerContext)
 
         val mangler = when (val settings = session.mangler) {
-            null -> DummyMangler
+            null -> NoOpMangler
             else -> manglerFactory.create(ManglerContext(settings, readDictionary, sendEvent))
         }
         
