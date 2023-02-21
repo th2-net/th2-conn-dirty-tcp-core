@@ -34,6 +34,7 @@ import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute
 import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.BookName
 import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
@@ -65,6 +66,7 @@ class Microservice(
     private val handlerFactory: IHandlerFactory,
     private val manglerFactory: IManglerFactory,
     private val grpcRouter: GrpcRouter,
+    private val bookName: String,
     private val registerResource: (name: String, destructor: () -> Unit) -> Unit,
 ) {
     private val logger = KotlinLogging.logger {}
@@ -209,7 +211,7 @@ class Microservice(
 
         val sendEvent: (Event) -> Unit = { onEvent(it, sessionEventId) }
 
-        val handlerContext = HandlerContext(session.handler, sessionAlias, channelFactory, readDictionary, sendEvent) {clazz -> grpcRouter.getService(clazz)}
+        val handlerContext = HandlerContext(session.handler, bookName, sessionAlias, channelFactory, readDictionary, sendEvent) {clazz -> grpcRouter.getService(clazz)}
         val handler = handlerFactory.create(handlerContext)
 
         val mangler = when (val settings = session.mangler) {
