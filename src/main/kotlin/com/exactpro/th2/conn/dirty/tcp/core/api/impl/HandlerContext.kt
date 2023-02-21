@@ -29,6 +29,7 @@ import java.net.InetSocketAddress
 
 class HandlerContext(
     override val settings: IHandlerSettings,
+    override val bookName: String,
     private val sessionAlias: String,
     private val channelFactory: ChannelFactory,
     private val getDictionary: (DictionaryType) -> InputStream,

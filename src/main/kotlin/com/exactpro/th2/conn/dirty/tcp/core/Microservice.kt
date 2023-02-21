@@ -72,6 +72,7 @@ class Microservice(
     private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId) }
     private val groupEventIds = ConcurrentHashMap<String, EventID>()
     private val sessionEventIds = ConcurrentHashMap<String, EventID>()
+    private val bookName: String = rootEventId.bookName
 
     private val executor = Executors.newScheduledThreadPool(settings.appThreads + settings.ioThreads).apply {
         registerResource("executor") {
@@ -209,7 +210,7 @@ class Microservice(
 
         val sendEvent: (Event) -> Unit = { onEvent(it, sessionEventId) }
 
-        val handlerContext = HandlerContext(session.handler, sessionAlias, channelFactory, readDictionary, sendEvent) {clazz -> grpcRouter.getService(clazz)}
+        val handlerContext = HandlerContext(session.handler, bookName, sessionAlias, channelFactory, readDictionary, sendEvent) {clazz -> grpcRouter.getService(clazz)}
         val handler = handlerFactory.create(handlerContext)
 
         val mangler = when (val settings = session.mangler) {

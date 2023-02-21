@@ -34,6 +34,11 @@ interface IHandlerContext {
     val settings: IHandlerSettings
 
     /**
+     * Returns book name for this service
+     */
+    val bookName: String
+
+    /**
      * Creates channel for specified [address] with specified [security], [attributes] and [sessionSuffixes]
      */
     fun createChannel(
