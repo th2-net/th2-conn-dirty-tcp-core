@@ -23,14 +23,12 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerSettings
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerSettings
-import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.mangler.BasicManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.load
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import com.fasterxml.jackson.module.kotlin.KotlinFeature
 import com.fasterxml.jackson.module.kotlin.KotlinFeature.NullIsSameAsDefault
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule.Builder
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentLinkedDeque
@@ -63,8 +61,8 @@ fun main(args: Array<String>) = try {
 
     val handlerFactory = load<IHandlerFactory>()
     val manglerFactory = load<IManglerFactory?>() ?: run {
-        LOGGER.warn { "No mangler was found. Using a dummy one" }
-        DummyManglerFactory
+        LOGGER.warn { "No mangler was found. Using a default one" }
+        BasicManglerFactory
     }
 
     LOGGER.info { "Loaded protocol handler factory: ${handlerFactory.name}" }
