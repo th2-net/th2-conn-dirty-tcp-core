@@ -33,11 +33,13 @@ import io.netty.handler.ssl.SslContextBuilder
 import io.netty.handler.ssl.SslHandler
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
+import mu.KotlinLogging
 import java.net.InetSocketAddress
 import java.util.concurrent.Executor
 import java.util.concurrent.locks.ReentrantReadWriteLock
 import kotlin.concurrent.read
 import kotlin.concurrent.write
+import kotlin.system.measureTimeMillis
 
 class TcpChannel(
     private val address: InetSocketAddress,
@@ -70,7 +72,8 @@ class TcpChannel(
     fun send(data: ByteBuf): ChannelFuture = lock.read {
         if (!isOpen) return channel.newFailedFuture("Cannot send message. Not connected to: $address")
         var timeout = FLUSH_TIMEOUT
-        while (!channel.isWritable && channel.isActive && --timeout != 0L) Thread.sleep(1)
+        val waitTime = measureTimeMillis { while (!channel.isWritable && channel.isActive && --timeout != 0L) Thread.sleep(1) }
+        LOGGER.trace { "Channel became writable in $waitTime ms" }
         if (timeout == 0L) return channel.newFailedFuture("Failed to flush channel in $FLUSH_TIMEOUT ms: $channel")
         channel.writeAndFlush(data)
     }
@@ -113,6 +116,7 @@ class TcpChannel(
     }
 
     companion object {
+        private val LOGGER = KotlinLogging.logger {}
         private const val FLUSH_TIMEOUT = 1000L
         private fun Channel.newFailedFuture(error: String) = newFailedFuture(IllegalStateException(error))
     }
