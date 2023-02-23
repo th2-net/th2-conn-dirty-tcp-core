@@ -32,7 +32,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore
 import com.fasterxml.jackson.annotation.JsonInclude
 import com.fasterxml.jackson.annotation.JsonInclude.Include.NON_NULL
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.dataformat.yaml.YAMLMapper
+import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.module.kotlin.KotlinFeature.NullIsSameAsDefault
 import com.fasterxml.jackson.module.kotlin.KotlinModule.Builder
 import com.fasterxml.jackson.module.kotlin.readValue
@@ -43,7 +43,7 @@ import java.nio.charset.Charset
 private const val RULE_NAME_PROPERTY = "rule-name"
 private const val RULE_ACTIONS_PROPERTY = "rule-actions"
 
-private val MAPPER = YAMLMapper.builder()
+private val MAPPER = JsonMapper.builder()
     .addModule(Builder().configure(NullIsSameAsDefault, true).build())
     .build()
 

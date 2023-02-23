@@ -3,6 +3,7 @@ plugins {
     id 'signing'
     id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
     id "io.github.gradle-nexus.publish-plugin" version '1.1.0'
+    id "org.owasp.dependencycheck" version "8.1.0"
 }
 
 ext {
@@ -165,9 +166,9 @@ clean {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:4.1.0')
+    api platform('com.exactpro.th2:bom:4.2.0')
 
-    implementation group: 'com.exactpro.th2', name: 'common', version: '3.44.0'
+    implementation group: 'com.exactpro.th2', name: 'common', version: '3.44.1'
     implementation group: 'com.exactpro.th2', name: 'common-utils', version: '0.0.3'
     implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
 
@@ -177,7 +178,6 @@ dependencies {
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-reflect', version: kotlin_version
 
     implementation group: 'com.fasterxml.jackson.module', name: 'jackson-module-kotlin', version: '2.14.1'
-    implementation group: 'com.fasterxml.jackson.dataformat', name: 'jackson-dataformat-yaml', version: '2.14.1'
     implementation group: 'com.fasterxml.jackson.datatype', name: 'jackson-datatype-jsr310', version: '2.14.1'
     implementation group: 'io.github.microutils', name: 'kotlin-logging', version: '1.7.9'
     implementation group: 'io.netty', name: 'netty-all', version: '4.1.86.Final'
@@ -185,6 +185,18 @@ dependencies {
 
     testImplementation group: 'org.jetbrains.kotlin', name: 'kotlin-test-junit5', version: kotlin_version
 }
+
 dependencyLocking {    
     lockAllConfigurations()
+}
+
+dependencyCheck {
+    formats=['SARIF', 'JSON', 'HTML']
+    failBuildOnCVSS=5
+
+    analyzers {
+        assemblyEnabled = false
+        nugetconfEnabled = false
+        nodeEnabled = false
+    }
 }

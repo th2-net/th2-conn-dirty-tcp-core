@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (2.2.0)
+# th2-conn-dirty-tcp-core (2.2.1)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -247,6 +247,10 @@ spec:
 ```
 
 # Changelog
+
+## 2.2.1
+* th2-common upgrade to `3.44.1`
+* th2-bom upgrade to `4.2.0`
 
 ## 2.2.0
 
