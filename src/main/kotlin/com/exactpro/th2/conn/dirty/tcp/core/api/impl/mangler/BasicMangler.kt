@@ -304,6 +304,8 @@ data class Action(
                     buffer.remove(moveIndex, moveIndex + value.size)
                     buffer.insert(value, targetIndex)
                 }
+
+                return true
             }
         }
 
