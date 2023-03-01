@@ -60,6 +60,118 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 
 **NOTE**: when using infra 1.7.0+ it is recommended to load value for `certFile` from a secret by using `${secret_path:secret_name}` syntax.
 
+## Built-in mangler
+
+This library also contains a basic mangler which will be used if library user does not implement its own.
+
+### Configuration
+
++ *rules* - list of mangling rules
+
+#### Rule
+
+```yaml
+name: String # rule name
+if-contains: List<ValueSelector> # list of values expected in a message for this rule to be applied
+then: List<Action> # list of actions to be applied to a matching message
+```
+
+#### Value definition
+
+```yaml
+i8: Byte # defines 8-bit integer value
+i16: Short # defines 16-bit integer value
+i16be: Short # defines big-endian 16-bit integer value
+i32: Int # defines 32-bit integer value
+i32be: Int # defines big-endian 32-bit integer value
+i64: Long # defines 64-bit integer value
+i64be: Long # defines big-endian 64-bit integer value
+f32: Float # defines 32-bit float value
+f32be: Float # defines big-endian 32-bit float value
+f64: Double # defines 64-bit double value
+f64be: Double # defines big-endian 64-bit double value
+str: String # defines string value
+bytes: Byte # defines byte-array value
+charset: Charset # charset of a string value ("UTF_8" by default)
+```
+
+**NOTE**: only single value type can be specified in a definition
+
+#### Value selector definition
+
+Selector defines a single expected value at a specified or arbitrary position in a message.  
+It is defined the same way as a value except that it can also contain an offset at which value will be expected:
+
+```yaml
+at-offset: Int # value offset (-1 by default)
+```
+
+**NOTE**: negative or absent offset means that value has no predefined offset in a message
+
+#### Action definitions:
+
+* set - sets a value at a specified position:
+
+  ```yaml
+  set: ValueSelector # value to set
+  ```
+
+  **NOTE**: value selector must contain value offset
+
+
+* add - adds a value at a specified position or before/after existing value:
+
+  ```yaml
+  add: ValueSelector # value to add
+  before: ValueSelector # value before which this value will be added (optional)
+  after: ValueSelector # value after which this value will be added (optional)
+  ```
+
+  **NOTE**: `add` selector cannot have an offset if `before` or `after` selector is specified and vice versa
+
+
+* move - moves a value after or before another value
+
+  ```yaml
+  move: ValueSelector # value to move
+  before: ValueSelector # value before which this value will be placed
+  after: ValueSelector # value after which this value will be placed
+  ```
+
+* replace - replaces a value with another value
+
+  ```yaml
+  replace: ValueSelector # value to replace
+  with: ValueDefinition # value to replace this value with
+  ```
+* remove - removes a value
+
+  ```yaml
+  remove: ValueSelector # value to remove
+  ```
+
+### Message will be mangled when:
+
+1) It contains all values from `if-contains` list of a rule from mangler configuration
+2) It contains existing rule name in `rule-name` property - in this case rule will be applied unconditionally
+3) It contains rule actions in YAML format in `rule-actions` property - specified actions will be applied
+
+### Mangler configuration example
+
+```yaml
+rules:
+  - name: replace_login_username
+    if-contains:
+      - i8: 1 # login message type
+        at-offset: 2 # message type offset
+    then:
+      - replace:
+          str: old_username # username value
+          at-offset: 10 # username offset
+        with:
+          str: new_username        
+```
+
 ## Box configuration example
 
 ```yaml
@@ -72,8 +184,6 @@ spec:
   image-version: ...
   type: th2-conn
   custom-config:
-    autoStart: true
-    autoStopAfter: 0
     maxBatchSize: 1000
     maxFlushTime: 1000
     publishSentEvents: true
@@ -143,6 +253,18 @@ spec:
 ## 3.0.0
 
 * add support for session groups, books and pages
+## 2.2.2
+
+* fix `move` action in mangler not being marked as applied
+
+## 2.2.1
+
+* th2-common upgrade to `3.44.1`
+* th2-bom upgrade to `4.2.0`
+
+## 2.2.0
+
+* add basic mangler
 
 ## 2.1.0
 
