@@ -35,7 +35,7 @@ class ChannelManager(
             if (closeAfter <= 0) return@apply
             stopFutures[sessionAlias] = executor.schedule(::close, closeAfter, MILLISECONDS)
         }
-    }
+    }.handler
 
     fun openAll(closeAfter: Long = 0) = channels.keys.forEach { sessionAlias ->
         open(sessionAlias, closeAfter)

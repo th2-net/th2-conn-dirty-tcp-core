@@ -16,7 +16,10 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
+import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.grpc.RawMessage
 import io.netty.buffer.ByteBuf
+import java.util.concurrent.CompletableFuture
 import javax.annotation.concurrent.ThreadSafe
 
 /**
@@ -24,6 +27,14 @@ import javax.annotation.concurrent.ThreadSafe
  */
 @ThreadSafe
 interface IProtocolHandler : AutoCloseable {
+    /**
+     * This method is called when message appears on rabbitmq queue.
+     *
+     * This method can be used to do pre-send validations.
+     * For example, it can be used to stop user messages send before logon process is finished.
+     */
+    fun send(rawMessage: RawMessage): CompletableFuture<MessageID>
+
     /**
      * This method is called after a corresponding channel has been opened (e.g. TCP connection is established).
      *

@@ -145,9 +145,9 @@ class Microservice(
             return
         }
 
-        val channel = manager.open(sessionAlias, settings.autoStopAfter)
+        val handler = manager.open(sessionAlias, settings.autoStopAfter)
 
-        channel.send(message.rawMessage).exceptionally {
+        handler.send(message.rawMessage).exceptionally {
             onError("Failed to send message", message, it)
             null
         }

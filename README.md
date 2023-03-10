@@ -132,6 +132,9 @@ spec:
 
 # Changelog
 
+## 1.1.0
+* give control over sends to handler.
+
 ## 1.0.2
 
 * add 30 second timeout for synchronous channel connect

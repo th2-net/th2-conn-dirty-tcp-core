@@ -64,7 +64,7 @@ class Channel(
     private val reconnectDelay: Long,
     maxMessageRate: Int,
     private val publishConnectEvents: Boolean,
-    private val handler: IProtocolHandler,
+    val handler: IProtocolHandler,
     private val mangler: IProtocolMangler,
     private val onEvent: (Event) -> Unit,
     private val onMessage: (RawMessage) -> Unit,
