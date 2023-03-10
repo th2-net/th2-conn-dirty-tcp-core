@@ -21,6 +21,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode.HANDLE_AND_MAN
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel.Security
 import io.netty.buffer.ByteBuf
 import java.net.InetSocketAddress
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Future
 import javax.annotation.concurrent.ThreadSafe
 
@@ -90,7 +91,7 @@ interface IChannel {
      *
      * @return ID of sent message
      */
-    fun send(message: ByteBuf, metadata: Map<String, String> = mapOf(), mode: SendMode = HANDLE_AND_MANGLE): Future<MessageID>
+    fun send(message: ByteBuf, metadata: Map<String, String> = mapOf(), mode: SendMode = HANDLE_AND_MANGLE): CompletableFuture<MessageID>
 
     /**
      * Closes this channel (i.e. closes a TCP connection) gracefully.

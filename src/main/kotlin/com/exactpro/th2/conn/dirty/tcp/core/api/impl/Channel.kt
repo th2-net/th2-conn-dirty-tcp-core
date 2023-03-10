@@ -141,7 +141,7 @@ class Channel(
         parentEventId = message.eventId
     )
 
-    override fun send(message: ByteBuf, metadata: Map<String, String>, mode: SendMode): Future<MessageID> = sendInternal(
+    override fun send(message: ByteBuf, metadata: Map<String, String>, mode: SendMode): CompletableFuture<MessageID> = sendInternal(
         message = message,
         metadata = metadata.toMutableMap(),
         mode = mode
