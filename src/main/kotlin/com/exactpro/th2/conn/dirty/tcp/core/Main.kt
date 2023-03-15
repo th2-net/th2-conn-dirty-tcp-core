@@ -126,6 +126,7 @@ data class Settings(
     val ioThreads: Int = sessions.size,
     val appThreads: Int = sessions.size * 2,
     val maxBatchSize: Int = 1000,
+    val minFlushTime: Long = 100,
     val maxFlushTime: Long = 1000,
     val batchByGroup: Boolean = false,
     val publishSentEvents: Boolean = true,
@@ -138,7 +139,8 @@ data class Settings(
         require(ioThreads > 0) { "'${::ioThreads.name}' must be positive" }
         require(appThreads > 0) { "'${::appThreads.name}' must be positive" }
         require(maxBatchSize > 0) { "'${::maxBatchSize.name}' must be positive" }
-        require(maxFlushTime > 0) { "'${::maxFlushTime.name}' must be positive" }
+        require(minFlushTime > 0) { "'${::minFlushTime.name}' must be positive" }
+        require(maxFlushTime > minFlushTime) { "${::maxFlushTime.name} must be greater than ${::minFlushTime.name}" }
         require(sendLimit >= 0) { "'${::sendLimit.name}' cannot be negative" }
         require(receiveLimit >= 0) { "'${::receiveLimit.name}' cannot be negative" }
 

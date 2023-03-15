@@ -28,6 +28,7 @@ import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.MessageRouter
@@ -54,6 +55,7 @@ import mu.KotlinLogging
 import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.TimeUnit.SECONDS
 
 class Microservice(
@@ -97,7 +99,8 @@ class Microservice(
 
     private val messageBatcher = MessageBatcher(
         settings.maxBatchSize,
-        settings.maxFlushTime,
+        MILLISECONDS.toNanos(settings.maxFlushTime),
+        MILLISECONDS.toNanos(settings.minFlushTime),
         if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
         executor
     ) { batch ->
@@ -120,7 +123,7 @@ class Microservice(
         eventLoopGroup,
         shaper,
         eventBatcher::onEvent,
-        messageBatcher::onMessage,
+        { if (!messageBatcher.onMessage(it)) logger.error { "Message was rejected by batcher: ${it.toJson()}" } },
         { event, parentId -> eventRouter.storeEvent(event, parentId).id },
         settings.publishConnectEvents
     )
