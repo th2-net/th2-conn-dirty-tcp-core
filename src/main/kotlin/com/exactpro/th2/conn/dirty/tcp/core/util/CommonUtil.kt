@@ -41,6 +41,7 @@ import com.exactpro.th2.common.message.sequence
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.message.toJson
+import com.exactpro.th2.common.message.toTimestamp
 import com.google.protobuf.ByteString
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
@@ -79,7 +80,10 @@ fun ByteBuf.toMessage(
     this.direction = direction
     this.sequence = sessionAlias.getSequence(direction)
 
-    this.metadataBuilder.putAllProperties(metadata)
+    this.metadataBuilder.apply {
+        putAllProperties(metadata)
+        timestamp = Instant.now().toTimestamp()
+    }
 }
 
 fun String.toEvent(): Event = toEvent(PASSED)

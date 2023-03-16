@@ -26,6 +26,7 @@ import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.conn.dirty.tcp.core.util.toGroup
 import mu.KotlinLogging
 import java.time.Instant
+import java.util.ArrayDeque
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Future
@@ -40,6 +41,7 @@ val ALIAS_SELECTOR: (RawMessage.Builder) -> Any = { it.sessionAlias to it.direct
 class MessageBatcher(
     private val maxBatchSize: Int = 100,
     private val maxFlushTime: Long = 1000,
+    private val restampMessage: Boolean = false,
     private val batchSelector: (RawMessage.Builder) -> Any,
     private val executor: ScheduledExecutorService,
     private val onBatch: (MessageGroupBatch) -> Unit,
@@ -52,24 +54,41 @@ class MessageBatcher(
 
     private inner class Batch : AutoCloseable {
         private val lock = ReentrantLock()
-        private var batch = MessageGroupBatch.newBuilder()
+        private val batch = MessageGroupBatch.newBuilder()
         private var future: Future<*> = CompletableFuture.completedFuture(null)
+        private val messages = ArrayDeque<RawMessage.Builder>()
 
         fun add(message: RawMessage.Builder) = lock.withLock {
-            message.metadataBuilder.timestamp = Instant.now().toTimestamp()
-            batch.addGroups(message.toGroup())
+            if (restampMessage) {
+                message.metadataBuilder.timestamp = Instant.now().toTimestamp()
+            }
 
-            when (batch.groupsCount) {
+            messages.offer(message)
+
+            when (messages.size) {
                 1 -> future = executor.schedule(::send, maxFlushTime, MILLISECONDS)
-                maxBatchSize -> send()
+                maxBatchSize -> executor.execute(::send)
             }
         }
 
-        private fun send() = lock.withLock<Unit> {
-            if (batch.groupsCount == 0) return
+        private fun send(): Unit = lock.withLock {
+            if (messages.isEmpty()) return
+
+            while (batch.groupsCount != maxBatchSize) {
+                batch.addGroups((messages.poll() ?: break).toGroup())
+            }
+
             batch.build().runCatching(onBatch).onFailure { LOGGER.error(it) { "Failed to publish batch: ${batch.toJson()}" } }
             batch.clearGroups()
+
             future.cancel(false)
+
+            val messageCount = messages.size
+
+            when {
+                messageCount >= maxBatchSize -> send()
+                messageCount > 0 -> future = executor.schedule(::send, maxFlushTime, MILLISECONDS)
+            }
         }
 
         override fun close() = send()

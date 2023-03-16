@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (2.2.2)
+# th2-conn-dirty-tcp-core (2.3.0)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -40,6 +40,7 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 + *publishConnectEvents* - enables/disables publish of "connect/disconnect" events (`true` by default)
 + *sendLimit* - global send limit in bytes (`0` by default which means no limit)
 + *receiveLimit* - global receive limit in bytes (`0` by default which means no limit)
++ *asyncStore* - store outgoing messages asynchronously (`false` by default)
 
 ## Session settings
 
@@ -247,6 +248,10 @@ spec:
 ```
 
 # Changelog
+
+## 2.3.0
+
+* add option to enable/disable async storing of outgoing messages
 
 ## 2.2.2
 

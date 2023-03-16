@@ -70,10 +70,11 @@ class Channel(
     eventLoopGroup: EventLoopGroup,
     private val shaper: GlobalTrafficShapingHandler,
     private val eventId: EventID,
+    asyncStore: Boolean,
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
     private val ioExecutor = Executor(executor.newPipe("io-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
-    private val sendExecutor = Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
+    private val sendExecutor = if (asyncStore) Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send) else Executor(Runnable::run)
     private val limiter = RateLimiter(maxMessageRate)
     private val channel = TcpChannel(address, security, eventLoopGroup, ioExecutor, shaper, this)
     private val lock = ReentrantLock()

@@ -40,6 +40,7 @@ class ChannelFactory(
     private val onMessage: (RawMessage.Builder) -> Unit,
     private val createEvent: (event: CommonEvent, parentId: String) -> String,
     private val publishConnectEvents: Boolean,
+    private val asyncStore: Boolean,
 ) {
     private val sessions = HashMap<String, SessionContext>()
     private val channels = HashMap<String, IChannel>()
@@ -88,7 +89,8 @@ class ChannelFactory(
             executor,
             eventLoopGroup,
             shaper,
-            toEventID(createEvent("Channel: $sessionAlias".toEvent(), context.eventId))!!
+            toEventID(createEvent("Channel: $sessionAlias".toEvent(), context.eventId))!!,
+            asyncStore
         )
 
         channels[sessionAlias] = channel
