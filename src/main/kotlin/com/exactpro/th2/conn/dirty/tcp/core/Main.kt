@@ -132,6 +132,7 @@ data class Settings(
     val publishConnectEvents: Boolean = true,
     val sendLimit: Long = 0,
     val receiveLimit: Long = 0,
+    val asyncStore: Boolean = false,
 ) {
     init {
         require(sessions.isNotEmpty()) { "'${::sessions.name}' is empty" }

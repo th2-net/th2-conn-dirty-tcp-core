@@ -98,6 +98,7 @@ class Microservice(
     private val messageBatcher = MessageBatcher(
         settings.maxBatchSize,
         settings.maxFlushTime,
+        settings.asyncStore,
         if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
         executor
     ) { batch ->
@@ -122,7 +123,8 @@ class Microservice(
         eventBatcher::onEvent,
         messageBatcher::onMessage,
         { event, parentId -> eventRouter.storeEvent(event, parentId).id },
-        settings.publishConnectEvents
+        settings.publishConnectEvents,
+        settings.asyncStore
     )
 
     init {
