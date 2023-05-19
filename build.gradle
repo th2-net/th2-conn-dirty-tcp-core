@@ -188,6 +188,10 @@ dependencies {
     testImplementation group: 'org.jetbrains.kotlin', name: 'kotlin-test-junit5', version: kotlin_version
 }
 
+test {
+    useJUnitPlatform()
+}
+
 dependencyLocking {
     lockAllConfigurations()
 }

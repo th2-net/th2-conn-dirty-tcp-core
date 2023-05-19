@@ -77,8 +77,6 @@ class Microservice(
     private val grpcRouter: GrpcRouter,
     private val registerResource: (name: String, destructor: () -> Unit) -> Unit,
 ) {
-    private val logger = KotlinLogging.logger {}
-
     private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId) }
     private val groupEventIds = ConcurrentHashMap<String, EventID>()
     private val sessionEventIds = ConcurrentHashMap<String, EventID>()
@@ -89,7 +87,7 @@ class Microservice(
             shutdown()
 
             if (!awaitTermination(5, SECONDS)) {
-                logger.warn { "Failed to shutdown executor in 5 seconds" }
+                K_LOGGER.warn { "Failed to shutdown executor in 5 seconds" }
                 shutdownNow()
             }
         }
@@ -179,20 +177,24 @@ class Microservice(
             }
         }
 
-        runCatching {
+        val proto = runCatching {
             checkNotNull(protoMessageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE))
         }.onSuccess { monitor ->
             registerResource("proto-raw-monitor", monitor::unsubscribe)
         }.onFailure {
-            throw IllegalStateException("Failed to subscribe to input queue", it)
+            K_LOGGER.warn(it) { "Failed to subscribe to input protobuf queue" }
         }
 
-        runCatching {
+        val transport = runCatching {
             checkNotNull(transportMessageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE))
         }.onSuccess { monitor ->
             registerResource("transport-raw-monitor", monitor::unsubscribe)
         }.onFailure {
-            throw IllegalStateException("Failed to subscribe to input queue", it)
+            K_LOGGER.warn(it) { "Failed to subscribe to input transport queue" }
+        }
+
+        if (proto.isFailure && transport.isFailure) {
+            error("Subscribe pin should be declared at least one of protobuf or transport protocols")
         }
     }
 
@@ -387,7 +389,7 @@ class Microservice(
 
     private fun onError(error: String, cause: Throwable?, id: MessageID, parentEventId: EventID) {
         val event = error.toErrorEvent(cause).messageID(id)
-        logger.error("$error (message: ${id.logId})", cause)
+        K_LOGGER.error("$error (message: ${id.logId})", cause)
         onEvent(event, parentEventId)
     }
 
@@ -417,7 +419,7 @@ class Microservice(
     }
 
     private fun onError(cause: Throwable?, error: String, messageIds: Map<EventID, List<MessageID>>) {
-        logger.error(cause) { "$error (messages: ${messageIds.values.flatten().map(MessageID::logId)})" }
+        K_LOGGER.error(cause) { "$error (messages: ${messageIds.values.flatten().map(MessageID::logId)})" }
 
         messageIds.forEach { (parentEventId, messageIds) ->
             val event = error.toErrorEvent(cause)
@@ -435,6 +437,8 @@ class Microservice(
     }
 
     companion object {
+        private val K_LOGGER = KotlinLogging.logger {}
+
         private const val INPUT_QUEUE_ATTRIBUTE = "send"
     }
 }

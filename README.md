@@ -3,7 +3,7 @@
 This is a core library for dirty TCP connections which takes care of:
 
 * configuration via CommonFactory
-* listening on protobuf and th2 transport MQs for messages to send
+* listening on protobuf or th2 transport MQs for messages to send
 * publishing sent and received messages to MQ using either of protobuf, th2 transport protocols
 * batching of published messages (by time and batch size)
 * running multiples TCP connections at once
@@ -183,9 +183,9 @@ rules:
 
 ## Box configuration example
 
-* `to_send_via_protobuf` and `to_send_via_transport` pins are required, it's mean that conn can consume messages via
-  both
-  protocols, but ability to process depends on handler implementation (please clarify in implementation README)
+* least one of `to_send_via_protobuf` or `to_send_via_transport` pins is required, it's mean that conn can consume
+  messages via one or both protocols,
+  but ability to process depends on handler implementation (please clarify in implementation README)
 * `processed_messages_via_protobuf` pin are required when useTransport is `false`
 * `processed_messages_via_transport` pin are required when useTransport is `true`
 
