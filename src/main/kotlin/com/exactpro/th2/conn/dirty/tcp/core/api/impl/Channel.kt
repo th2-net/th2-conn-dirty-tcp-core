@@ -21,7 +21,7 @@ import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
-import com.exactpro.th2.conn.dirty.tcp.core.MessageAcceptor
+import com.exactpro.th2.conn.dirty.tcp.core.ChannelFactory.MessageAcceptor
 import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
 import com.exactpro.th2.conn.dirty.tcp.core.RateLimiter
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
@@ -166,7 +166,7 @@ class Channel(
             thenRunAsync({
                 if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
                 event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
-                onMessage(buffer, messageId, metadata, eventId)
+                onMessage.accept(buffer, messageId, metadata, eventId)
             }, sendExecutor)
 
             channel.send(buffer.asReadOnly()).apply {
@@ -233,7 +233,7 @@ class Channel(
         logger.trace { "Received message on '$sessionAlias' session: ${hexDump(message)}" }
         val metadata = handler.onIncoming(this, message.asReadOnly())
         mangler.onIncoming(this, message.asReadOnly(), metadata)
-        onMessage(message, nextMessageId(bookName, sessionGroup, sessionAlias, FIRST), metadata, null)
+        onMessage.accept(message, nextMessageId(bookName, sessionGroup, sessionAlias, FIRST), metadata, null)
         message.release()
     }
 

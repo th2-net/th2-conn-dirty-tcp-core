@@ -33,8 +33,6 @@ import java.net.InetSocketAddress
 import java.util.concurrent.ScheduledExecutorService
 import com.exactpro.th2.common.event.Event as CommonEvent
 
-typealias MessageAcceptor = (buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) -> Unit
-
 class ChannelFactory(
     private val executor: ScheduledExecutorService,
     private val eventLoopGroup: EventLoopGroup,
@@ -113,6 +111,10 @@ class ChannelFactory(
 
     fun getHandler(sessionGroup: String, sessionAlias: String): IHandler? = synchronized(this) {
         return sessions[sessionAlias]?.takeIf { it.group == sessionGroup }?.handler
+    }
+
+    fun interface MessageAcceptor {
+        fun accept(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?)
     }
 
     private data class SessionContext(
