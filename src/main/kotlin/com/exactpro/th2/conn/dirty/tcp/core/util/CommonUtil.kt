@@ -46,6 +46,7 @@ import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
+import com.exactpro.th2.common.utils.message.toTimestamp
 import com.google.protobuf.ByteString
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
@@ -85,6 +86,7 @@ fun ByteBuf.toMessage(
     this.sessionAlias = sessionAlias
     this.direction = direction
     this.sequence = sessionAlias.getSequence(direction)
+    this.metadataBuilder.idBuilder.timestamp = Instant.now().toTimestamp()
 
     this.metadataBuilder.putAllProperties(metadata)
 }
