@@ -163,7 +163,13 @@ class Channel(
 
             thenRunAsync({
                 if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
-                event?.run { storeEvent(attachMessage(protoMessage), eventId ?: this@Channel.eventId) }
+                try {
+                    event?.run {
+                        storeEvent(attachMessage(protoMessage), eventId ?: this@Channel.eventId)
+                    }
+                } catch (e: Exception) {
+                    logger.error { "Error while sending mangler event: $e" }
+                }
                 onMessage(protoMessage)
             }, sendExecutor)
 
