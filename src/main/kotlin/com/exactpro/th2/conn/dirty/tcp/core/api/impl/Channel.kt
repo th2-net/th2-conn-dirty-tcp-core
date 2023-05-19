@@ -168,7 +168,7 @@ class Channel(
                         storeEvent(attachMessage(protoMessage), eventId ?: this@Channel.eventId)
                     }
                 } catch (e: Exception) {
-                    logger.error { "Error while sending mangler event: $e" }
+                    logger.error(e) { "Error while sending mangler event: ${e.message}" }
                 }
                 onMessage(protoMessage)
             }, sendExecutor)
