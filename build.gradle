@@ -168,11 +168,13 @@ clean {
 dependencies {
     api platform('com.exactpro.th2:bom:4.2.0')
 
-    implementation group: 'com.exactpro.th2', name: 'common', version: '5.2.0-dev'
+    implementation group: 'com.exactpro.th2', name: 'common', version: '5.2.0-json-raw-body-5023867935-485ab1a-SNAPSHOT'
     implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.0.0-dev'
     implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
 
     implementation 'org.slf4j:slf4j-api'
+
+    implementation "org.apache.commons:commons-lang3"
 
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-reflect', version: kotlin_version
@@ -186,13 +188,13 @@ dependencies {
     testImplementation group: 'org.jetbrains.kotlin', name: 'kotlin-test-junit5', version: kotlin_version
 }
 
-dependencyLocking {    
+dependencyLocking {
     lockAllConfigurations()
 }
 
 dependencyCheck {
-    formats=['SARIF', 'JSON', 'HTML']
-    failBuildOnCVSS=5
+    formats = ['SARIF', 'JSON', 'HTML']
+    failBuildOnCVSS = 5
 
     analyzers {
         assemblyEnabled = false

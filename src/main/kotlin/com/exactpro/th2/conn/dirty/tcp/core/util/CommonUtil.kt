@@ -36,25 +36,24 @@ import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.message.bookName
-import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.plusAssign
-import com.exactpro.th2.common.message.sequence
 import com.exactpro.th2.common.message.sessionAlias
-import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.toTransport
 import com.google.protobuf.ByteString
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
 import org.apache.commons.lang3.exception.ExceptionUtils
 import java.time.Instant
-import java.util.ServiceLoader
+import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit.SECONDS
 import java.util.concurrent.atomic.AtomicLong
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageGroup as TransportMessageGroup
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage as TransportRawMessage
 
 private val INCOMING_SEQUENCES = ConcurrentHashMap<String, () -> Long>()
 private val OUTGOING_SEQUENCES = ConcurrentHashMap<String, () -> Long>()
@@ -69,24 +68,45 @@ private fun String.getSequence(direction: Direction) = when (direction) {
     UNRECOGNIZED -> error("Unknown direction $direction in session: $this")
 }.invoke()
 
-fun ByteBuf.toMessage(
+fun nextMessageId(
     bookName: String,
     sessionGroup: String,
     sessionAlias: String,
-    direction: Direction,
+    direction: Direction
+): MessageID = MessageID.newBuilder().apply {
+    this.bookName = bookName
+    this.direction = direction
+    this.sequence = sessionAlias.getSequence(direction)
+    connectionIdBuilder.apply {
+        this.sessionGroup = sessionGroup
+        this.sessionAlias = sessionAlias
+    }
+}.build()
+
+fun ByteBuf.toProtoMessage(
+    messageId: MessageID,
     metadata: Map<String, String>,
     eventId: EventID? = null,
 ): RawMessage.Builder = RawMessage.newBuilder().apply {
     eventId?.let { this.parentEventId = it }
 
     this.body = ByteString.copyFrom(asReadOnly().nioBuffer())
-    this.bookName = bookName
-    this.sessionGroup = sessionGroup
-    this.sessionAlias = sessionAlias
-    this.direction = direction
-    this.sequence = sessionAlias.getSequence(direction)
+    metadataBuilder.apply {
+        id = messageId
+        putAllProperties(metadata)
+    }
+}
 
-    this.metadataBuilder.putAllProperties(metadata)
+fun ByteBuf.toTransportMessage(
+    messageId: MessageID,
+    metadata: Map<String, String>,
+    eventId: EventID? = null,
+): TransportRawMessage = TransportRawMessage.newMutable().apply {
+    eventId?.let { this.eventId = it.toTransport() }
+
+    this.body = asReadOnly()
+    this.id = messageId.toTransport()
+    this.metadata = metadata.toMutableMap() //FIXME: migrate to transport builders
 }
 
 fun String.toEvent(): Event = toEvent(PASSED)
@@ -117,6 +137,10 @@ fun MessageRouter<EventBatch>.storeEvent(event: Event, parentId: EventID): Event
 fun RawMessage.Builder.toGroup(): MessageGroup = MessageGroup.newBuilder().run {
     plusAssign(this@toGroup)
     build()
+}
+
+fun TransportRawMessage.toGroup(): TransportMessageGroup = TransportMessageGroup.newMutable().apply {
+    messages.add(this@toGroup)
 }
 
 fun ByteString.toByteBuf(): ByteBuf = asReadOnlyByteBuffer().run(Unpooled.buffer(size())::writeBytes)
