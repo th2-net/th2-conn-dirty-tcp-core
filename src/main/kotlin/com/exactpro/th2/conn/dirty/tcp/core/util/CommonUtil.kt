@@ -83,7 +83,7 @@ fun nextMessageId(
     }
 }.build()
 
-fun ByteBuf.toProtoMessage(
+fun ByteBuf.toProtoRawMessageBuilder(
     messageId: MessageID,
     metadata: Map<String, String>,
     eventId: EventID? = null,
@@ -97,16 +97,16 @@ fun ByteBuf.toProtoMessage(
     }
 }
 
-fun ByteBuf.toTransportMessage(
+fun ByteBuf.toTransportRawMessageBuilder(
     messageId: MessageID,
     metadata: Map<String, String>,
     eventId: EventID? = null,
-): TransportRawMessage = TransportRawMessage.newMutable().apply {
-    eventId?.let { this.eventId = it.toTransport() }
+): TransportRawMessage.Builder = TransportRawMessage.builder().apply {
+    eventId?.let { setEventId(it.toTransport()) }
 
-    this.body = asReadOnly()
-    this.id = messageId.toTransport()
-    this.metadata = metadata.toMutableMap() //FIXME: migrate to transport builders
+    setBody(asReadOnly())
+    setId(messageId.toTransport())
+    setMetadata(metadata.toMutableMap())
 }
 
 fun String.toEvent(): Event = toEvent(PASSED)
@@ -139,9 +139,9 @@ fun RawMessage.Builder.toGroup(): MessageGroup = MessageGroup.newBuilder().run {
     build()
 }
 
-fun TransportRawMessage.toGroup(): TransportMessageGroup = TransportMessageGroup.newMutable().apply {
-    messages.add(this@toGroup)
-}
+fun TransportRawMessage.toGroup(): TransportMessageGroup = TransportMessageGroup.builder().apply {
+    addMessage(this@toGroup)
+}.build()
 
 fun ByteString.toByteBuf(): ByteBuf = asReadOnlyByteBuffer().run(Unpooled.buffer(size())::writeBytes)
 

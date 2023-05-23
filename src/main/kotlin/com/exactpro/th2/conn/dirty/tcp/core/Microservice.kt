@@ -53,8 +53,8 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.sessionAlias
 import com.exactpro.th2.conn.dirty.tcp.core.util.storeEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
-import com.exactpro.th2.conn.dirty.tcp.core.util.toProtoMessage
-import com.exactpro.th2.conn.dirty.tcp.core.util.toTransportMessage
+import com.exactpro.th2.conn.dirty.tcp.core.util.toProtoRawMessageBuilder
+import com.exactpro.th2.conn.dirty.tcp.core.util.toTransportRawMessageBuilder
 import io.netty.buffer.ByteBuf
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
@@ -136,7 +136,7 @@ class Microservice(
 
             fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) {
                 messageBatcher.onMessage(
-                    buff.toTransportMessage(messageId, metadata, eventId), messageId.connectionId.sessionGroup
+                    buff.toTransportRawMessageBuilder(messageId, metadata, eventId), messageId.connectionId.sessionGroup
                 )
             }
         } else {
@@ -153,7 +153,7 @@ class Microservice(
             }
 
             fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) {
-                messageBatcher.onMessage(buff.toProtoMessage(messageId, metadata, eventId))
+                messageBatcher.onMessage(buff.toProtoRawMessageBuilder(messageId, metadata, eventId))
             }
         }
 

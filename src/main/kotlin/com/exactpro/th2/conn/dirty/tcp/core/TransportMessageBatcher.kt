@@ -40,7 +40,7 @@ class TransportMessageBatcher(
     private val batchSelector = if (batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR
     private val batches = ConcurrentHashMap<Any, Batch>()
 
-    fun onMessage(message: RawMessage, group: String): Unit =
+    fun onMessage(message: RawMessage.Builder, group: String): Unit =
         batches.getOrPut(batchSelector(message, group)) { Batch(book, group) }.add(message)
 
     override fun close(): Unit = batches.values.forEach(Batch::close)
@@ -50,27 +50,30 @@ class TransportMessageBatcher(
         group: String,
     ) : AutoCloseable {
         private val lock = ReentrantLock()
-        private var batch = GroupBatch.newMutable().apply {
-            this.book = book
-            this.sessionGroup = group
+        private val newBatch: () -> GroupBatch.Builder = {
+            GroupBatch.builder().apply {
+                setBook(book)
+                setSessionGroup(group)
+            }
         }
+        private var batch = newBatch()
         private var future: Future<*> = CompletableFuture.completedFuture(null)
 
-        fun add(message: RawMessage) = lock.withLock {
-            message.id.timestamp = Instant.now()
-            batch.groups.add(message.toGroup())
+        fun add(message: RawMessage.Builder) = lock.withLock {
+            message.idBuilder().setTimestamp(Instant.now())
+            batch.addGroup(message.build().toGroup())
 
-            when (batch.groups.size) {
+            when (batch.groupsBuilder().size) {
                 1 -> future = executor.schedule(::send, maxFlushTime, TimeUnit.MILLISECONDS)
                 maxBatchSize -> send()
             }
         }
 
         private fun send() = lock.withLock<Unit> {
-            if (batch.groups.size == 0) return
-            batch.runCatching(onBatch)
+            if (batch.groupsBuilder().size == 0) return
+            batch.build().runCatching(onBatch)
                 .onFailure { LOGGER.error(it) { "Failed to publish batch: $batch" } }
-            batch.clean()
+            batch = newBatch()
             future.cancel(false)
         }
 
@@ -80,9 +83,9 @@ class TransportMessageBatcher(
     companion object {
         private val LOGGER = KotlinLogging.logger { }
 
-        private val GROUP_SELECTOR: (RawMessage, String) -> Any = { _, group -> group }
-        private val ALIAS_SELECTOR: (RawMessage, String) -> Any = { message, _ ->
-            message.id.sessionAlias to message.id.direction
+        private val GROUP_SELECTOR: (RawMessage.Builder, String) -> Any = { _, group -> group }
+        private val ALIAS_SELECTOR: (RawMessage.Builder, String) -> Any = { message, _ ->
+            message.idBuilder().sessionAlias to message.idBuilder().direction
         }
     }
 }
