@@ -38,8 +38,13 @@ import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Direction.
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.GroupBatch
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Message
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
-import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.toProto
 import com.exactpro.th2.common.utils.event.EventBatcher
+import com.exactpro.th2.common.utils.event.transport.toProto
+import com.exactpro.th2.common.utils.message.RAW_DIRECTION_SELECTOR
+import com.exactpro.th2.common.utils.message.RAW_GROUP_SELECTOR
+import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.ALIAS_SELECTOR
+import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.GROUP_SELECTOR
+import com.exactpro.th2.common.utils.message.transport.toProto
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
@@ -64,6 +69,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageGroup as TransportMessageGroup
+import com.exactpro.th2.common.utils.message.RawMessageBatcher as ProtoMessageBatcher
+import com.exactpro.th2.common.utils.message.transport.MessageBatcher as TransportMessageBatcher
 
 class Microservice(
     private val rootEventId: EventID,
@@ -125,7 +132,7 @@ class Microservice(
                 settings.maxBatchSize,
                 settings.maxFlushTime,
                 bookName,
-                settings.batchByGroup,
+                if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
                 executor
             ) { batch ->
                 transportMessageRouter.send(batch)
@@ -143,7 +150,7 @@ class Microservice(
             val messageBatcher = ProtoMessageBatcher(
                 settings.maxBatchSize,
                 settings.maxFlushTime,
-                settings.batchByGroup,
+                if (settings.batchByGroup) RAW_GROUP_SELECTOR else RAW_DIRECTION_SELECTOR,
                 executor
             ) { batch ->
                 protoMessageRouter.send(batch, QueueAttribute.RAW.value)

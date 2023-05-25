@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,7 +42,8 @@ import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
-import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.toTransport
+import com.exactpro.th2.common.utils.event.toTransport
+import com.exactpro.th2.common.utils.message.toTransport
 import com.google.protobuf.ByteString
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
