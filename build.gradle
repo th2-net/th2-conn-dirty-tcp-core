@@ -169,7 +169,7 @@ dependencies {
     api platform('com.exactpro.th2:bom:4.2.0')
 
     implementation group: 'com.exactpro.th2', name: 'common', version: '5.3.0-json-raw-body-5081601396-f76a50e-SNAPSHOT'
-    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.1.0-transport-protocol-5081007240-883a04e-SNAPSHOT'
+    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.1.0-transport-protocol-5082069832-958aa1c-SNAPSHOT'
     implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
 
     implementation 'org.slf4j:slf4j-api'
