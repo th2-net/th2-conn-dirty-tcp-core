@@ -125,8 +125,6 @@ class Microservice(
     private val channelFactory: ChannelFactory
 
     init {
-        settings.sessions.forEach(::initSession)
-
         val messageAcceptor = if (settings.useTransport) {
             val messageBatcher = TransportMessageBatcher(
                 settings.maxBatchSize,
@@ -173,6 +171,8 @@ class Microservice(
             eventRouter::storeEvent,
             settings.publishConnectEvents
         )
+
+        settings.sessions.forEach(::initSession)
     }
 
     fun run() {
