@@ -134,6 +134,13 @@ class Microservice(
                 executor
             ) { batch ->
                 transportMessageRouter.send(batch)
+
+                for (group in batch.groups) {
+                    for (message in group.messages)
+                        if (message is RawMessage)
+                            message.body.release()
+                }
+
                 publishSentEvents(batch)
             }.apply {
                 registerResource("transport-message-batcher", ::close)
@@ -159,6 +166,7 @@ class Microservice(
 
             fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) {
                 messageBatcher.onMessage(buff.toProtoRawMessageBuilder(messageId, metadata, eventId))
+                buff.release()
             }
         }
 

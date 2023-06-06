@@ -166,6 +166,8 @@ class Channel(
             thenRunAsync({
                 if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
                 event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
+
+                buffer.retain()
                 onMessage.accept(buffer, messageId, metadata, eventId)
             }, sendExecutor)
 
@@ -234,7 +236,6 @@ class Channel(
         val metadata = handler.onIncoming(this, message.asReadOnly())
         mangler.onIncoming(this, message.asReadOnly(), metadata)
         onMessage.accept(message, nextMessageId(bookName, sessionGroup, sessionAlias, FIRST), metadata, null)
-        message.release()
     }
 
     override fun onError(cause: Throwable): Unit = onError("Error on: $address (session: $sessionAlias)", cause)
