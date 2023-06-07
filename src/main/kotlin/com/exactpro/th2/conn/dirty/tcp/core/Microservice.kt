@@ -193,7 +193,7 @@ class Microservice(
         }
 
         val proto = runCatching {
-            checkNotNull(protoMessageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE))
+            checkNotNull(protoMessageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE, RAW_QUEUE_ATTRIBUTE))
         }.onSuccess { monitor ->
             registerResource("proto-raw-monitor", monitor::unsubscribe)
         }.onFailure {
@@ -201,7 +201,7 @@ class Microservice(
         }
 
         val transport = runCatching {
-            checkNotNull(transportMessageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE))
+            checkNotNull(transportMessageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE, TRANSPORT_QUEUE_ATTRIBUTE))
         }.onSuccess { monitor ->
             registerResource("transport-raw-monitor", monitor::unsubscribe)
         }.onFailure {
@@ -455,5 +455,7 @@ class Microservice(
         private val K_LOGGER = KotlinLogging.logger {}
 
         private const val INPUT_QUEUE_ATTRIBUTE = "send"
+        private const val RAW_QUEUE_ATTRIBUTE = "raw"
+        private const val TRANSPORT_QUEUE_ATTRIBUTE = "transport-group"
     }
 }
