@@ -168,7 +168,7 @@ clean {
 dependencies {
     api platform('com.exactpro.th2:bom:4.2.0')
 
-    implementation "com.exactpro.th2:common:5.3.0-json-raw-body-5200549463-bac6816-SNAPSHOT"
+    implementation "com.exactpro.th2:common:5.3.0-json-raw-body-5242142633-7ac1672-SNAPSHOT"
     implementation "com.exactpro.th2:common-utils:2.1.0-transport-protocol-5153730274-14792e9-SNAPSHOT"
     implementation "com.exactpro.th2:netty-bytebuf-utils:0.0.1"
 

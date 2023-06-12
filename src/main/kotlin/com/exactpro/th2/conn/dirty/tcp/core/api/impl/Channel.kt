@@ -37,6 +37,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import com.exactpro.th2.netty.bytebuf.util.asExpandable
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil.hexDump
+import io.netty.buffer.Unpooled
 import io.netty.channel.EventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import mu.KotlinLogging
@@ -166,8 +167,6 @@ class Channel(
             thenRunAsync({
                 if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
                 event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
-
-                buffer.retain()
                 onMessage.accept(buffer, messageId, metadata, eventId)
             }, sendExecutor)
 
@@ -235,7 +234,11 @@ class Channel(
         logger.trace { "Received message on '$sessionAlias' session: ${hexDump(message)}" }
         val metadata = handler.onIncoming(this, message.asReadOnly())
         mangler.onIncoming(this, message.asReadOnly(), metadata)
-        onMessage.accept(message, nextMessageId(bookName, sessionGroup, sessionAlias, FIRST), metadata, null)
+
+        val messageCopy = Unpooled.copiedBuffer(message)
+        message.release()
+
+        onMessage.accept(messageCopy, nextMessageId(bookName, sessionGroup, sessionAlias, FIRST), metadata, null)
     }
 
     override fun onError(cause: Throwable): Unit = onError("Error on: $address (session: $sessionAlias)", cause)
