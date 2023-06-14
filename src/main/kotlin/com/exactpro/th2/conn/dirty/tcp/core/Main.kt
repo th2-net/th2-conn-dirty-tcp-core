@@ -81,11 +81,11 @@ fun main(args: Array<String>) = try {
     val settings = factory.getCustomConfiguration(Settings::class.java, mapper)
     val eventRouter = factory.eventBatchRouter
     val messageRouter = factory.messageRouterMessageGroupBatch
-
     Microservice(
         factory.rootEventId,
         settings,
         factory::readDictionary,
+        factory::loadDictionary,
         eventRouter,
         messageRouter,
         handlerFactory,

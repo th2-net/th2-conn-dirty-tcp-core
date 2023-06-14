@@ -60,6 +60,7 @@ class Microservice(
     private val rootEventId: EventID,
     private val settings: Settings,
     private val readDictionary: (DictionaryType) -> InputStream,
+    private val readDictionaryByAlias: (String) -> InputStream,
     private val eventRouter: MessageRouter<EventBatch>,
     private val messageRouter: MessageRouter<MessageGroupBatch>,
     private val handlerFactory: IHandlerFactory,
@@ -215,7 +216,7 @@ class Microservice(
 
         val mangler = when (val settings = session.mangler) {
             null -> NoOpMangler
-            else -> manglerFactory.create(ManglerContext(settings, readDictionary, sendEvent))
+            else -> manglerFactory.create(ManglerContext(settings, readDictionary, readDictionaryByAlias, sendEvent))
         }
         
         channelFactory.registerSession(sessionGroup, sessionAlias, handler, mangler, sessionEventId)

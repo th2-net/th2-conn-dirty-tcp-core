@@ -25,8 +25,10 @@ import java.io.InputStream
 class ManglerContext(
     override val settings: IManglerSettings,
     private val getDictionary: (DictionaryType) -> InputStream,
+    private val getDictionaryByAlias: (String) -> InputStream,
     private val sendEvent: (Event) -> Unit,
 ) : IManglerContext {
     override fun get(dictionary: DictionaryType): InputStream = getDictionary(dictionary)
+    override fun get(dictionaryAlias: String): InputStream = getDictionaryByAlias(dictionaryAlias)
     override fun send(event: Event): Unit = sendEvent(event)
 }
