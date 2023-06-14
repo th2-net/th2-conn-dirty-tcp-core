@@ -123,6 +123,7 @@ data class SessionSettings(
 
 data class Settings(
     val sessions: List<SessionSettings>,
+    var dictionaries: Map<String, String>? = null,
     val ioThreads: Int = sessions.size,
     val appThreads: Int = sessions.size * 2,
     val maxBatchSize: Int = 1000,
