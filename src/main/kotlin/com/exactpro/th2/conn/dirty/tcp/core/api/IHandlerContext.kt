@@ -66,6 +66,15 @@ interface IHandlerContext {
     operator fun get(dictionary: DictionaryType): InputStream
 
     /**
+     * Returns input stream with requested [dictionary]
+     *
+     * @param dictionary dictionary alias
+     *
+     * @return dictionary input stream
+     */
+    operator fun get(dictionary: String): InputStream
+
+    /**
      * Sends an [event]
      *
      * @param event event to send
