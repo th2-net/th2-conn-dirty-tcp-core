@@ -216,7 +216,7 @@ class Microservice(
 
         val mangler = when (val settings = session.mangler) {
             null -> NoOpMangler
-            else -> manglerFactory.create(ManglerContext(settings, readDictionary, readDictionaryByAlias, sendEvent))
+            else -> manglerFactory.create(ManglerContext(settings, this.settings.dictionaries, readDictionary, readDictionaryByAlias, sendEvent))
         }
         
         channelFactory.registerSession(sessionGroup, sessionAlias, handler, mangler, sessionEventId)

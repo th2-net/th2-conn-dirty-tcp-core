@@ -57,6 +57,7 @@ class HandlerContext(
 
     override fun destroyChannel(channel: IChannel): Unit = channelFactory.destroyChannel(channel)
     override fun get(dictionary: DictionaryType): InputStream = getDictionary(dictionary)
+    override fun get(dictionary: String): InputStream = throw NotImplementedError("")
     override fun send(event: Event): Unit = sendEvent(event)
     override fun <T : Any> getGrpcService(serviceClass: Class<T>): T = getService(serviceClass) as T
 }
