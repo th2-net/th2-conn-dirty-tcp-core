@@ -3,7 +3,7 @@ plugins {
     id 'signing'
     id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
     id "io.github.gradle-nexus.publish-plugin" version '1.1.0'
-    id "org.owasp.dependencycheck" version "8.1.2"
+    id "org.owasp.dependencycheck" version "8.2.1"
 }
 
 ext {
@@ -39,7 +39,7 @@ repositories {
 
     mavenLocal()
 
-    configurations.all {
+    configurations.configureEach {
         resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
         resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
     }
@@ -65,7 +65,7 @@ java {
 }
 
 // conditionals for publications
-tasks.withType(PublishToMavenRepository) {
+tasks.withType(PublishToMavenRepository).configureEach {
     onlyIf {
         (repository == publishing.repositories.nexusRepository &&
                 project.hasProperty('nexus_user') &&
@@ -78,14 +78,14 @@ tasks.withType(PublishToMavenRepository) {
     }
 }
 
-tasks.withType(Sign) {
+tasks.withType(Sign).configureEach {
     onlyIf {
         project.hasProperty('signingKey') && project.hasProperty('signingPassword')
     }
 }
 
 // disable running task 'initializeSonatypeStagingRepository' on a gitlab
-tasks.whenTaskAdded { task ->
+tasks.configureEach { task ->
     if (task.name == 'initializeSonatypeStagingRepository' &&
             !(project.hasProperty('sonatypeUsername') && project.hasProperty('sonatypePassword'))
     ) {
@@ -155,8 +155,8 @@ nexusPublishing {
 }
 
 signing {
-    def signingKey = findProperty("signingKey")
-    def signingPassword = findProperty("signingPassword")
+    String signingKey = findProperty("signingKey")
+    String signingPassword = findProperty("signingPassword")
     useInMemoryPgpKeys(signingKey, signingPassword)
     sign publishing.publications.mavenJava
 }
@@ -166,11 +166,14 @@ clean {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:4.2.0')
+    api platform('com.exactpro.th2:bom:4.4.0-update-libs-5345334944-c71fdc9-SNAPSHOT')
 
-    implementation "com.exactpro.th2:common:5.3.0-json-raw-body-5242142633-7ac1672-SNAPSHOT"
-    implementation "com.exactpro.th2:common-utils:2.1.0-transport-protocol-5153730274-14792e9-SNAPSHOT"
-    implementation "com.exactpro.th2:netty-bytebuf-utils:0.0.1"
+    implementation('com.exactpro.th2:common:5.3.0-separate-executor-5347518176-63bc4ea-SNAPSHOT') {
+        exclude group: 'com.exactpro.th2', module: 'cradle-core'
+        exclude group: 'com.exactpro.th2', module: 'cradle-cassandra'
+    }
+    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.1.0-transport-protocol-5347774882-e4aa8e6-SNAPSHOT'
+    implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
 
     implementation 'org.slf4j:slf4j-api'
 
@@ -199,7 +202,7 @@ dependencyLocking {
 dependencyCheck {
     formats = ['SARIF', 'JSON', 'HTML']
     failBuildOnCVSS = 5
-
+    suppressionFile = file('suppressions.xml')
     analyzers {
         assemblyEnabled = false
         nugetconfEnabled = false
