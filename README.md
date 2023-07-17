@@ -54,6 +54,7 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 
 + *sessionGroup* - session group for incoming/outgoing th2 messages (equal to session alias by default)
 + *sessionAlias* - session alias for incoming/outgoing th2 messages
++ *bookName* - optional bookName which will be used for events/messages instead of default one. Default: `null`
 + *handler* - handler settings
 + *mangler* - mangler settings (`null` by default)
 
@@ -267,6 +268,7 @@ spec:
 
 * add support for th2 transport protocol
 * migrated to message batcher from common-utils
+* ability to override default book name. 
 * th2-common updated to `5.3.0`
 * th2-common-utils added `2.1.0` version
 
