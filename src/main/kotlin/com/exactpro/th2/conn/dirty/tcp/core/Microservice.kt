@@ -42,6 +42,7 @@ import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.event.transport.toProto
 import com.exactpro.th2.common.utils.message.RAW_DIRECTION_SELECTOR
 import com.exactpro.th2.common.utils.message.RAW_GROUP_SELECTOR
+import com.exactpro.th2.common.utils.message.sessionAlias
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.ALIAS_SELECTOR
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.GROUP_SELECTOR
 import com.exactpro.th2.common.utils.message.transport.toProto
@@ -73,7 +74,7 @@ import com.exactpro.th2.common.utils.message.RawMessageBatcher as ProtoMessageBa
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher as TransportMessageBatcher
 
 class Microservice(
-    private val rootEventId: EventID,
+    private val defaultRootEventID: EventID,
     private val settings: Settings,
     private val readDictionary: (DictionaryType) -> InputStream,
     private val eventRouter: MessageRouter<EventBatch>,
@@ -82,12 +83,14 @@ class Microservice(
     private val handlerFactory: IHandlerFactory,
     private val manglerFactory: IManglerFactory,
     private val grpcRouter: GrpcRouter,
+    private val sessionAliasToBook: Map<String, String>,
+    private val rootEventsByBook: Map<String, EventID>,
     private val registerResource: (name: String, destructor: () -> Unit) -> Unit,
 ) {
-    private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId) }
+    private val errorEventIdsByBook = ConcurrentHashMap<String, EventID>()
     private val groupEventIds = ConcurrentHashMap<String, EventID>()
     private val sessionEventIds = ConcurrentHashMap<String, EventID>()
-    private val bookName: String = rootEventId.bookName
+    private val defaultBookName: String = defaultRootEventID.bookName
 
     private val executor = Executors.newScheduledThreadPool(settings.appThreads + settings.ioThreads).apply {
         registerResource("executor") {
@@ -129,7 +132,7 @@ class Microservice(
             val messageBatcher = TransportMessageBatcher(
                 settings.maxBatchSize,
                 settings.maxFlushTime,
-                bookName,
+                defaultBookName,
                 if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
                 executor
             ) { batch ->
@@ -141,7 +144,7 @@ class Microservice(
 
             fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) {
                 messageBatcher.onMessage(
-                    buff.toTransportRawMessageBuilder(messageId, metadata, eventId), messageId.connectionId.sessionGroup
+                    buff.toTransportRawMessageBuilder(messageId, metadata, eventId), messageId.connectionId.sessionGroup, sessionAliasToBook[messageId.sessionAlias]
                 )
             }
         } else {
@@ -230,8 +233,8 @@ class Microservice(
         val rawMessage = message.rawMessage
 
         rawMessage.eventId?.run {
-            if (bookName != rootEventId.bookName) {
-                onError("Unexpected book name: $bookName (expected: ${rootEventId.bookName})", message)
+            if (bookName != sessionAliasToBook[rawMessage.sessionAlias]) {
+                onError("Unexpected book name: $bookName (expected: ${sessionAliasToBook[rawMessage.sessionAlias]})", message)
                 return
             }
         }
@@ -275,9 +278,10 @@ class Microservice(
         }
 
         message.eventId?.run {
-            if (bookName != rootEventId.bookName) {
+            val expectedBookName = sessionAliasToBook[message.id.sessionAlias]
+            if(book != expectedBookName) {
                 onError(
-                    "Unexpected book name: $bookName (expected: ${rootEventId.bookName})",
+                    "Unexpected book name: ${this.book} (expected: ${expectedBookName})",
                     message,
                     book,
                     sessionGroup
@@ -310,7 +314,7 @@ class Microservice(
         val sessionAlias = session.sessionAlias
 
         val groupEventId = groupEventIds.getOrPut(sessionGroup) {
-            eventRouter.storeEvent("Group: $sessionGroup".toEvent(), rootEventId)
+            eventRouter.storeEvent("Group: $sessionGroup".toEvent(), rootEventsByBook[session.bookName] ?: defaultRootEventID)
         }
 
         val sessionEventId = sessionEventIds.getOrPut(sessionAlias) {
@@ -321,7 +325,7 @@ class Microservice(
 
         val handlerContext = HandlerContext(
             session.handler,
-            bookName,
+            session.bookName ?: defaultBookName,
             sessionAlias,
             channelFactory,
             readDictionary,
@@ -436,11 +440,21 @@ class Microservice(
     }
 
     private fun AnyMessage.getErrorEventId(): EventID {
-        return eventId ?: sessionEventIds[sessionAlias] ?: errorEventId
+        return eventId ?: sessionEventIds[sessionAlias] ?: errorEventIdBySessionAlias(sessionAlias)
     }
 
     private fun Message<*>.getErrorEventId(): EventID {
-        return eventId?.toProto() ?: sessionEventIds[id.sessionAlias] ?: errorEventId
+        return eventId?.toProto() ?: sessionEventIds[id.sessionAlias] ?: errorEventIdBySessionAlias(id.sessionAlias)
+    }
+
+    private fun errorEventIdBySessionAlias(sessionAlias: String): EventID {
+        val book = sessionAliasToBook[sessionAlias]
+        return errorEventIdsByBook.getOrPut(book) {
+            eventRouter.storeEvent(
+                "Errors".toErrorEvent(),
+                rootEventsByBook[book] ?: defaultRootEventID
+            )
+        }
     }
 
     companion object {

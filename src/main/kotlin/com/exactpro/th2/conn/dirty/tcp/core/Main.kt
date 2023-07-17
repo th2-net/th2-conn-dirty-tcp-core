@@ -18,18 +18,26 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core
 
+import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.grpc.EventBatch
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.schema.factory.CommonFactory
+import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerSettings
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerSettings
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.mangler.BasicManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.load
+import com.exactpro.th2.conn.dirty.tcp.core.util.storeEvent
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinFeature.NullIsSameAsDefault
 import com.fasterxml.jackson.module.kotlin.KotlinModule.Builder
+import java.io.IOException
+import java.time.Instant
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.locks.ReentrantLock
@@ -83,6 +91,24 @@ fun main(args: Array<String>) = try {
     val protoMessageRouter = factory.messageRouterMessageGroupBatch
     val transportMessageRouter = factory.transportGroupBatchRouter
 
+    val boxName = factory.boxConfiguration.boxName ?: "dirty-fix"
+    val defaultBook = factory.boxConfiguration.bookName
+    val defaultRootEvent = factory.rootEventId
+
+    val sessionAliasToBookName = settings.sessions.associate { it.sessionAlias to (it.bookName ?: defaultBook)}
+
+    val rootEvents = settings.sessions
+        .mapNotNull { it.bookName }
+        .toSet()
+        .associateWith { createRootEventID(it, boxName, eventRouter) }
+        .toMutableMap()
+        .apply {
+            put(defaultBook, defaultRootEvent)
+        }
+        .toMap()
+
+
+
     Microservice(
         factory.rootEventId,
         settings,
@@ -92,7 +118,9 @@ fun main(args: Array<String>) = try {
         transportMessageRouter,
         handlerFactory,
         manglerFactory,
-        factory.grpcRouter
+        factory.grpcRouter,
+        sessionAliasToBookName,
+        rootEvents
     ) { resource, destructor ->
         resources += resource to destructor
     }.run()
@@ -114,6 +142,7 @@ fun main(args: Array<String>) = try {
 data class SessionSettings(
     val sessionAlias: String,
     val sessionGroup: String = sessionAlias,
+    val bookName: String? = null,
     val handler: IHandlerSettings,
     val mangler: IManglerSettings? = null,
 ) {
@@ -157,5 +186,29 @@ data class Settings(
             .joinToString()
 
         require(duplicates.isEmpty()) { "Duplicate session aliases: $duplicates" }
+    }
+}
+
+fun createRootEventID(
+    bookName: String,
+    boxName: String,
+    eventRouter: MessageRouter<EventBatch>
+): EventID {
+    try {
+        val customBookRoot = Event
+            .start()
+            .endTimestamp()
+            .name("$boxName with non-default book ${bookName}: ${Instant.now()}")
+            .description("Root event")
+            .status(Event.Status.PASSED)
+            .toProto(bookName, boxName)
+        try {
+            eventRouter.sendAll(EventBatch.newBuilder().apply { addEvents(customBookRoot) }.build())
+        } catch (e: IOException) {
+            throw IllegalStateException("Can not send root event with custom book.", e);
+        }
+        return customBookRoot.id
+    } catch (e: JsonProcessingException) {
+        throw IllegalStateException("Can not create root event with custom book.", e)
     }
 }
