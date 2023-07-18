@@ -147,6 +147,7 @@ data class SessionSettings(
     val mangler: IManglerSettings? = null,
 ) {
     init {
+        bookName?.run { require(isNotBlank()) { "Custom book name shouldn't be blank." } }
         require(sessionAlias.isNotBlank()) { "'${::sessionAlias.name}' is blank" }
         require(sessionGroup.isNotBlank()) { "'${::sessionGroup.name}' is blank" }
     }
