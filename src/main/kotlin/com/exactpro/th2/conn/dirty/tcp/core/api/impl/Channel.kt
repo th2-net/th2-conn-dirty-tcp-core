@@ -165,7 +165,7 @@ class Channel(
             val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
             val messageId = nextMessageId(bookName, sessionGroup, sessionAlias, SECOND)
 
-            val data = Unpooled.copiedBuffer(buffer)
+            val data = Unpooled.copiedBuffer(buffer.asReadOnly())
             thenRunAsync({
                 runCatching {
                     logger.trace { "Sent message on '$sessionAlias' session: ${hexDump(message)}" }
