@@ -21,6 +21,7 @@ import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.conn.dirty.tcp.core.ChannelFactory.MessageAcceptor
 import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
 import com.exactpro.th2.conn.dirty.tcp.core.RateLimiter
@@ -165,9 +166,14 @@ class Channel(
             val messageId = nextMessageId(bookName, sessionGroup, sessionAlias, SECOND)
 
             thenRunAsync({
-                if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
-                event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
-                onMessage.accept(buffer, messageId, metadata, eventId)
+                runCatching {
+                    logger.trace { "Sent message on '$sessionAlias' session: ${hexDump(message)}" }
+                    if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
+                    event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
+                    onMessage.accept(buffer, messageId, metadata, eventId)
+                }.onFailure {
+                    logger.error(it) { "Post process of message ${messageId.toJson()} failure" }
+                }.getOrThrow()
             }, sendExecutor)
 
             channel.send(buffer.asReadOnly()).apply {
