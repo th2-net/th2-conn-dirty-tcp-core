@@ -168,19 +168,19 @@ class Channel(
             val data = Unpooled.copiedBuffer(buffer) // copied because buffer will be released after sending
             thenRunAsync({
                 runCatching {
-                    logger.trace { "Sent message on '$sessionAlias' session: ${hexDump(data)}" }
+                    logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
                     if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
                     event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
                     onMessage.accept(data, messageId, metadata, eventId)
                 }.onFailure {
-                    logger.error(it) { "Post process of message ${messageId.toJson()} failure" }
+                    logger.error(it) { "Post process of '${messageId.toJson()}' message id failure" }
                 }
             }, sendExecutor)
 
             channel.send(buffer.asReadOnly()).apply {
                 onSuccess { complete(messageId) }
                 onFailure {
-                    logger.error(it) { "TcpChannel.send operation failure" }
+                    logger.error(it) { "TcpChannel.send operation of '${messageId.toJson()}' message id failure" }
                     completeExceptionally(it)
                 }
                 onCancel { cancel(true) }
