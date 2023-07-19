@@ -165,19 +165,19 @@ class Channel(
             val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
             val messageId = nextMessageId(bookName, sessionGroup, sessionAlias, SECOND)
 
-            val data = Unpooled.copiedBuffer(buffer.asReadOnly())
+            val data = Unpooled.copiedBuffer(buffer) // copied because buffer will be released after sending
             thenRunAsync({
                 runCatching {
-                    logger.trace { "Sent message on '$sessionAlias' session: ${hexDump(message)}" }
+                    logger.trace { "Sent message on '$sessionAlias' session: ${hexDump(data)}" }
                     if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
                     event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
                     onMessage.accept(data, messageId, metadata, eventId)
                 }.onFailure {
                     logger.error(it) { "Post process of message ${messageId.toJson()} failure" }
-                }.getOrThrow()
+                }
             }, sendExecutor)
 
-            channel.send(data).apply {
+            channel.send(buffer.asReadOnly()).apply {
                 onSuccess { complete(messageId) }
                 onFailure {
                     logger.error(it) { "TcpChannel.send operation failure" }
