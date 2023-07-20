@@ -167,7 +167,7 @@ class Channel(
 
             // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
             // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
-            val data = Unpooled.copiedBuffer(buffer)
+            val data = Unpooled.copiedBuffer(buffer).asReadOnly()
             thenRunAsync({
                 runCatching {
                     logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
