@@ -91,26 +91,14 @@ fun main(args: Array<String>) = try {
     val protoMessageRouter = factory.messageRouterMessageGroupBatch
     val transportMessageRouter = factory.transportGroupBatchRouter
 
-    val boxName = factory.boxConfiguration.boxName ?: "dirty-fix"
+    val boxName = factory.boxConfiguration.boxName
+    require(boxName != null && boxName.isNotBlank()) { "Box name can't be blank." }
     val defaultBook = factory.boxConfiguration.bookName
-    val defaultRootEvent = factory.rootEventId
-
-    val sessionAliasToBookName = settings.sessions.associate { it.sessionAlias to (it.bookName ?: defaultBook)}
-
-    val rootEvents = settings.sessions
-        .mapNotNull { it.bookName }
-        .toSet()
-        .associateWith { createRootEventID(it, boxName, eventRouter) }
-        .toMutableMap()
-        .apply {
-            put(defaultBook, defaultRootEvent)
-        }
-        .toMap()
-
-
+    require(defaultBook.isNotBlank()) { "Default book name can't be blank." }
 
     Microservice(
-        factory.rootEventId,
+        defaultBook,
+        boxName,
         settings,
         factory::readDictionary,
         eventRouter,
@@ -118,9 +106,7 @@ fun main(args: Array<String>) = try {
         transportMessageRouter,
         handlerFactory,
         manglerFactory,
-        factory.grpcRouter,
-        sessionAliasToBookName,
-        rootEvents
+        factory.grpcRouter
     ) { resource, destructor ->
         resources += resource to destructor
     }.run()
@@ -187,29 +173,5 @@ data class Settings(
             .joinToString()
 
         require(duplicates.isEmpty()) { "Duplicate session aliases: $duplicates" }
-    }
-}
-
-fun createRootEventID(
-    bookName: String,
-    boxName: String,
-    eventRouter: MessageRouter<EventBatch>
-): EventID {
-    try {
-        val customBookRoot = Event
-            .start()
-            .endTimestamp()
-            .name("$boxName with non-default book ${bookName}: ${Instant.now()}")
-            .description("Root event")
-            .status(Event.Status.PASSED)
-            .toProto(bookName, boxName)
-        try {
-            eventRouter.sendAll(EventBatch.newBuilder().apply { addEvents(customBookRoot) }.build())
-        } catch (e: IOException) {
-            throw IllegalStateException("Can not send root event with custom book.", e);
-        }
-        return customBookRoot.id
-    } catch (e: JsonProcessingException) {
-        throw IllegalStateException("Can not create root event with custom book.", e)
     }
 }

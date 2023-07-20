@@ -38,9 +38,9 @@ class ChannelFactory(
     private val eventLoopGroup: EventLoopGroup,
     private val shaper: GlobalTrafficShapingHandler,
     private val onEvent: (Event) -> Unit,
-    private val onMessage: MessageAcceptor,
     private val createEvent: (event: CommonEvent, parentId: EventID) -> EventID,
     private val publishConnectEvents: Boolean,
+    private val getMessageAcceptorByBook: (String) -> MessageAcceptor,
 ) {
     private val sessions = HashMap<String, SessionContext>()
     private val channels = HashMap<String, IChannel>()
@@ -48,12 +48,13 @@ class ChannelFactory(
     fun registerSession(
         sessionGroup: String,
         sessionAlias: String,
+        book: String,
         handler: IHandler,
         mangler: IMangler,
         eventId: EventID,
     ): Unit = synchronized(this) {
         require(sessionAlias !in sessions) { "Session is already registered: $sessionAlias" }
-        sessions[sessionAlias] = SessionContext(sessionGroup, handler, mangler, eventId, true)
+        sessions[sessionAlias] = SessionContext(sessionGroup, book, handler, mangler, eventId, true)
     }
 
     fun createChannel(
@@ -85,7 +86,7 @@ class ChannelFactory(
             context.handler,
             context.mangler,
             onEvent,
-            onMessage,
+            getMessageAcceptorByBook(context.book),
             executor,
             eventLoopGroup,
             shaper,
@@ -109,8 +110,8 @@ class ChannelFactory(
         if (!context.isRoot) sessions -= sessionAlias
     }
 
-    fun getHandler(sessionGroup: String, sessionAlias: String): IHandler? = synchronized(this) {
-        return sessions[sessionAlias]?.takeIf { it.group == sessionGroup }?.handler
+    fun getHandler(sessionGroup: String, sessionAlias: String, book: String): IHandler? = synchronized(this) {
+        return sessions[sessionAlias]?.takeIf { it.group == sessionGroup && it.book == book}?.handler
     }
 
     fun interface MessageAcceptor {
@@ -119,6 +120,7 @@ class ChannelFactory(
 
     private data class SessionContext(
         val group: String,
+        val book: String,
         val handler: IHandler,
         val mangler: IMangler,
         val eventId: EventID,
