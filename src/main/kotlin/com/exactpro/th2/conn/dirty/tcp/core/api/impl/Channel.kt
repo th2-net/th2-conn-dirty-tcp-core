@@ -165,11 +165,13 @@ class Channel(
             val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
             val messageId = nextMessageId(bookName, sessionGroup, sessionAlias, SECOND)
 
-            val data = Unpooled.copiedBuffer(buffer) // copied because buffer will be released after sending
+            // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
+            // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
+            val data = Unpooled.copiedBuffer(buffer)
             thenRunAsync({
                 runCatching {
                     logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
-                    if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
+                    if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
                     event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
                     onMessage.accept(data, messageId, metadata, eventId)
                 }.onFailure {
