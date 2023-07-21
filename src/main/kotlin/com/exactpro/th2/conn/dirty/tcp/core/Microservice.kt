@@ -259,7 +259,7 @@ class Microservice(
         val sessionGroup = rawMessage.sessionGroup.ifBlank { sessionAlias }
         val book = rawMessage.bookName
 
-        val handler = channelFactory.getHandler(sessionGroup, sessionAlias, book) ?: run {
+        val handler = channelFactory.getHandler(book, sessionGroup, sessionAlias) ?: run {
             onError("Unknown session group or alias: $sessionGroup/$sessionAlias", message)
             return
         }
@@ -295,7 +295,7 @@ class Microservice(
         }
 
         message.eventId?.run {
-            if(bookNames.contains(book)) {
+            if(!bookNames.contains(book)) {
                 onError(
                     "Unexpected book name: ${this.book} (expected one of the following: $bookNames)",
                     message,
@@ -309,7 +309,7 @@ class Microservice(
         val sessionAlias = message.id.sessionAlias
         val resolvedSessionGroup = sessionGroup.ifBlank { sessionAlias }
 
-        val handler = channelFactory.getHandler(resolvedSessionGroup, sessionAlias, book) ?: run {
+        val handler = channelFactory.getHandler(book, resolvedSessionGroup, sessionAlias) ?: run {
             onError(
                 "Unknown session group or alias: $resolvedSessionGroup/$sessionAlias",
                 message,

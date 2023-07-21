@@ -54,7 +54,7 @@ class ChannelFactory(
         eventId: EventID,
     ): Unit = synchronized(this) {
         require(sessionAlias !in sessions) { "Session is already registered: $sessionAlias" }
-        sessions[sessionAlias] = SessionContext(sessionGroup, book, handler, mangler, eventId, true)
+        sessions[sessionAlias] = SessionContext(book, sessionGroup, handler, mangler, eventId, true)
     }
 
     fun createChannel(
@@ -110,7 +110,7 @@ class ChannelFactory(
         if (!context.isRoot) sessions -= sessionAlias
     }
 
-    fun getHandler(sessionGroup: String, sessionAlias: String, book: String): IHandler? = synchronized(this) {
+    fun getHandler(book: String, sessionGroup: String, sessionAlias: String): IHandler? = synchronized(this) {
         return sessions[sessionAlias]?.takeIf { it.group == sessionGroup && it.book == book}?.handler
     }
 
@@ -119,8 +119,8 @@ class ChannelFactory(
     }
 
     private data class SessionContext(
-        val group: String,
         val book: String,
+        val group: String,
         val handler: IHandler,
         val mangler: IMangler,
         val eventId: EventID,
