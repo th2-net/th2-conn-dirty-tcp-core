@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.0.0)
+# th2-conn-dirty-tcp-core (3.1.0)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -250,9 +250,15 @@ spec:
 
 # Changelog
 
+## 3.1.0
+
++ added ability to filter by "book", "session_group", "session_alias", "message_type", "direction", "protocol".
++ conditions inside the message and metadata now combined as "and".
+
 ## 3.0.0
 
 * add support for session groups, books and pages
+
 ## 2.2.2
 
 * fix `move` action in mangler not being marked as applied

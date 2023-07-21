@@ -166,9 +166,9 @@ clean {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:4.2.0')
+    api platform('com.exactpro.th2:bom:4.4.0')
 
-    implementation group: 'com.exactpro.th2', name: 'common', version: '5.2.0-dev'
+    implementation group: 'com.exactpro.th2', name: 'common', version: '5.2.2-dev'
     implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.0.0-dev'
     implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
 
@@ -177,6 +177,7 @@ dependencies {
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-reflect', version: kotlin_version
 
+    implementation "org.apache.commons:commons-lang3"
     implementation group: 'com.fasterxml.jackson.datatype', name: 'jackson-datatype-jsr310'
     implementation group: 'com.fasterxml.jackson.module', name: 'jackson-module-kotlin', version: '2.11.2'
     implementation group: 'io.github.microutils', name: 'kotlin-logging', version: '1.7.9'
