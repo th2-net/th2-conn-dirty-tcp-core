@@ -21,6 +21,7 @@ import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.conn.dirty.tcp.core.ChannelFactory.MessageAcceptor
 import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
 import com.exactpro.th2.conn.dirty.tcp.core.RateLimiter
@@ -164,18 +165,30 @@ class Channel(
             val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
             val messageId = nextMessageId(bookName, sessionGroup, sessionAlias, SECOND)
 
+            // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
+            // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
+            val data = Unpooled.copiedBuffer(buffer).asReadOnly()
             thenRunAsync({
-                if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
-                event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
-                onMessage.accept(buffer, messageId, metadata, eventId)
+                runCatching {
+                    logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
+                    if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
+                    event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
+                    onMessage.accept(data, messageId, metadata, eventId)
+                }.onFailure {
+                    logger.error(it) { "Post process of '${messageId.toJson()}' message id failure" }
+                }
             }, sendExecutor)
 
             channel.send(buffer.asReadOnly()).apply {
                 onSuccess { complete(messageId) }
-                onFailure { completeExceptionally(it) }
+                onFailure {
+                    logger.error(it) { "TcpChannel.send operation of '${messageId.toJson()}' message id failure" }
+                    completeExceptionally(it)
+                }
                 onCancel { cancel(true) }
             }
         } catch (e: Exception) {
+            logger.error(e) { "Channel.send operation failure" }
             completeExceptionally(e)
         } finally {
             lock.unlock()
