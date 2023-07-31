@@ -17,7 +17,9 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.EventId
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import java.io.InputStream
 import java.net.InetSocketAddress
@@ -69,8 +71,9 @@ interface IHandlerContext {
      * Sends an [event]
      *
      * @param event event to send
+     * @param rootEventId optional rootEventId different from session rootEventId
      */
-    fun send(event: Event)
+    fun send(event: Event, rootEventId: EventID? = null): EventID
 
     /**
      * Returns instance of class to interact with grpc service.
