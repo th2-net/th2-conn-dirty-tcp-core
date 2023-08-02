@@ -189,7 +189,7 @@ class Channel(
                     onCancel { cancel(true) }
                 }
             } else {
-                CompletableFuture.completedFuture(null)
+                complete(messageId)
             }
         } catch (e: Exception) {
             logger.error(e) { "Channel.send operation failure" }
