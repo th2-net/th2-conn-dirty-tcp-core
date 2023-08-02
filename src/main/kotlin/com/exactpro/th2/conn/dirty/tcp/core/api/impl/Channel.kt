@@ -163,29 +163,33 @@ class Channel(
             if (mode.handle) handler.onOutgoing(this@Channel, buffer, metadata)
 
             val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
-            val messageId = nextMessageId(bookName, sessionGroup, sessionAlias, SECOND)
+            val messageId = if(mode.mstoreSend) nextMessageId(bookName, sessionGroup, sessionAlias, SECOND) else null
 
             // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
             // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
             val data = Unpooled.copiedBuffer(buffer).asReadOnly()
             thenRunAsync({
                 runCatching {
-                    logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
+                    logger.trace { "Post process of '${messageId?.toJson()}' message id: ${hexDump(data)}" }
                     if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
-                    event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
-                    onMessage.accept(data, messageId, metadata, eventId)
+                    event?.run { messageId?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) } }
+                    messageId?.run { onMessage.accept(data, messageId, metadata, eventId) }
                 }.onFailure {
-                    logger.error(it) { "Post process of '${messageId.toJson()}' message id failure" }
+                    logger.error(it) { "Post process of '${messageId?.toJson()}' message id failure" }
                 }
             }, sendExecutor)
 
-            channel.send(buffer.asReadOnly()).apply {
-                onSuccess { complete(messageId) }
-                onFailure {
-                    logger.error(it) { "TcpChannel.send operation of '${messageId.toJson()}' message id failure" }
-                    completeExceptionally(it)
+            if(mode.socketSend) {
+                channel.send(buffer.asReadOnly()).apply {
+                    onSuccess { complete(messageId) }
+                    onFailure {
+                        logger.error(it) { "TcpChannel.send operation of '${messageId?.toJson()}' message id failure" }
+                        completeExceptionally(it)
+                    }
+                    onCancel { cancel(true) }
                 }
-                onCancel { cancel(true) }
+            } else {
+                CompletableFuture.completedFuture(null)
             }
         } catch (e: Exception) {
             logger.error(e) { "Channel.send operation failure" }

@@ -117,24 +117,32 @@ interface IChannel {
         val acceptAllCerts: Boolean = false,
     )
 
-    enum class SendMode(val handle: Boolean, val mangle: Boolean) {
+    enum class SendMode(val handle: Boolean, val mangle: Boolean, val socketSend: Boolean, val mstoreSend: Boolean) {
         /**
          * Message and its metadata will pass through [IHandler.onOutgoing] and [IMangler.onOutgoing] before send
          */
-        HANDLE_AND_MANGLE(true, true),
+        HANDLE_AND_MANGLE(true, true, true, true),
 
         /**
          * Message and its metadata will only be passed to [IHandler.onOutgoing] before send
          */
-        HANDLE(true, false),
+        HANDLE(true, false, true, true),
 
         /**
          * Message and its metadata will only be passed to [IMangler.onOutgoing] before send
          */
-        MANGLE(false, true),
+        MANGLE(false, true, true, true),
         /**
-         * Message will be sent directly to socket
+         * Message will be sent directly to socket and will to mstore.
          */
-        DIRECT(false, false)
+        DIRECT(false, false, true, true),
+        /**
+         * Message will be sent directly to socket and will not be sent to mstore.
+         */
+        DIRECT_SOCKET(false, false, true, false),
+        /**
+         * Message will be sent to mstore and will not be sent to socket.
+         */
+        DIRECT_MSTORE(false, false, false, true)
     }
 }
