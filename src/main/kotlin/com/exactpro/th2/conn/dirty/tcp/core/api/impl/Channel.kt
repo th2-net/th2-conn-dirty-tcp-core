@@ -36,6 +36,8 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.nextMessageId
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import com.exactpro.th2.netty.bytebuf.util.asExpandable
+import com.exactpro.th2.netty.bytebuf.util.isEmpty
+import com.exactpro.th2.netty.bytebuf.util.isNotEmpty
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.buffer.Unpooled
@@ -163,7 +165,7 @@ class Channel(
             if (mode.handle) handler.onOutgoing(this@Channel, buffer, metadata)
 
             val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
-            val messageId = if(mode.mstoreSend) nextMessageId(bookName, sessionGroup, sessionAlias, SECOND) else null
+            val messageId = if(mode.mstoreSend && message.isReadable) nextMessageId(bookName, sessionGroup, sessionAlias, SECOND) else null
 
             // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
             // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released

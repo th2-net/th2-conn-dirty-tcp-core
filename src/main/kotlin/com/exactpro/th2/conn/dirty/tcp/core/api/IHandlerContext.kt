@@ -74,6 +74,7 @@ interface IHandlerContext {
      * @param rootEventId optional rootEventId different from session rootEventId
      */
     fun send(event: Event, rootEventId: EventID? = null): EventID
+    fun send(event: Event) = send(event, null)
 
     /**
      * Returns instance of class to interact with grpc service.

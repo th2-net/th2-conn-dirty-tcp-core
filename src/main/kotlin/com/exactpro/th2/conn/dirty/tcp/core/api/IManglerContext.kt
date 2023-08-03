@@ -48,4 +48,5 @@ interface IManglerContext {
      * @param rootEventId optional rootEventId that is different from session rootEventId
      */
     fun send(event: Event, rootEventId: EventID? = null): EventID
+    fun send(event: Event) = send(event, null)
 }
