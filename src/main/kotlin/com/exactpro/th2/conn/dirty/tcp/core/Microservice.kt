@@ -132,7 +132,8 @@ class Microservice(
                 settings.maxFlushTime,
                 bookName,
                 if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
-                executor
+                executor,
+                false
             ) { batch ->
                 transportMessageRouter.send(batch)
                 publishSentEvents(batch)
@@ -150,7 +151,8 @@ class Microservice(
                 settings.maxBatchSize,
                 settings.maxFlushTime,
                 if (settings.batchByGroup) RAW_GROUP_SELECTOR else RAW_DIRECTION_SELECTOR,
-                executor
+                executor,
+                false
             ) { batch ->
                 protoMessageRouter.send(batch, QueueAttribute.RAW.value)
                 publishSentEvents(batch)
