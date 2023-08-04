@@ -39,6 +39,7 @@ import com.exactpro.th2.common.grpc.RawMessage
 import com.exactpro.th2.common.message.plusAssign
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.toJson
+import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
@@ -77,6 +78,7 @@ fun nextMessageId(
 ): MessageID = MessageID.newBuilder().apply {
     this.bookName = bookName
     this.direction = direction
+    this.timestamp = Instant.now().toTimestamp()
     this.sequence = sessionAlias.getSequence(direction)
     connectionIdBuilder.apply {
         this.sessionGroup = sessionGroup

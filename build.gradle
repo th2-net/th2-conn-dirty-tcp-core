@@ -173,7 +173,7 @@ dependencies {
         exclude group: 'com.exactpro.th2', module: 'cradle-core'
         exclude group: 'com.exactpro.th2', module: 'cradle-cassandra'
     }
-    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.1.0-transport-protocol-5347774882-e4aa8e6-SNAPSHOT'
+    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.1.0-TH2-5001+'
     implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
 
     implementation 'org.slf4j:slf4j-api'
