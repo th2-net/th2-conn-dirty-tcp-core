@@ -17,6 +17,7 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.grpc.MessageID
 import io.netty.buffer.ByteBuf
 import javax.annotation.concurrent.ThreadSafe
 
@@ -36,10 +37,11 @@ interface IMangler : AutoCloseable {
      * It can be used to change mangling algorithm after a certain message was received
      *
      * @param message received message
+     * @param messageID messageId of the received message after it will be saved to mstore
      *
      * @return message metadata
      */
-    fun onIncoming(channel: IChannel, message: ByteBuf, metadata: Map<String, String>): Unit = Unit
+    fun onIncoming(channel: IChannel, message: ByteBuf, metadata: Map<String, String>, messageID: MessageID): Unit = Unit
 
     /**
      * This method is called before sending [message] to a corresponding [channel] (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).

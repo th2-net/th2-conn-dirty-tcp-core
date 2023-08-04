@@ -81,10 +81,11 @@ interface IHandler : AutoCloseable {
      * It can be used to change state according to received message (e.g. set state to logged-in when a login response is received).
      *
      * @param message received message
+     * @param messageId messageId of the received message after it will be saved to mstore
      *
      * @return message metadata
      */
-    fun onIncoming(channel: IChannel, message: ByteBuf): Map<String, String> = mapOf()
+    fun onIncoming(channel: IChannel, message: ByteBuf, messageId: MessageID): Map<String, String> = mapOf()
 
     /**
      * This method is called before sending [message] to a corresponding [channel] (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).

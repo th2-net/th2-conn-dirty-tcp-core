@@ -250,14 +250,15 @@ class Channel(
     }
 
     override fun onMessage(message: ByteBuf) {
+        val messageId = nextMessageId(bookName, sessionGroup, sessionAlias, FIRST)
         logger.trace { "Received message on '$sessionAlias' session: ${hexDump(message)}" }
-        val metadata = handler.onIncoming(this, message.asReadOnly())
-        mangler.onIncoming(this, message.asReadOnly(), metadata)
+        val metadata = handler.onIncoming(this, message.asReadOnly(), messageId)
+        mangler.onIncoming(this, message.asReadOnly(), metadata, messageId)
 
         val messageCopy = Unpooled.copiedBuffer(message)
         message.release()
 
-        onMessage.accept(messageCopy, nextMessageId(bookName, sessionGroup, sessionAlias, FIRST), metadata, null)
+        onMessage.accept(messageCopy, messageId, metadata, null)
     }
 
     override fun onError(cause: Throwable): Unit = onError("Error on: $address (session: $sessionAlias)", cause)
