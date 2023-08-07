@@ -181,7 +181,7 @@ class Channel(
                 }
             }, sendExecutor)
 
-            if(mode.socketSend) {
+            if(mode.socketSend && message.isReadable) {
                 channel.send(buffer.asReadOnly()).apply {
                     onSuccess { complete(messageId) }
                     onFailure {
