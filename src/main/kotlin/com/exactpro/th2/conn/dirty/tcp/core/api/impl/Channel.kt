@@ -164,8 +164,8 @@ class Channel(
 
             if (mode.handle) handler.onOutgoing(this@Channel, buffer, metadata)
 
-            val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
-            val messageId = if(mode.mstoreSend && message.isReadable) nextMessageId(bookName, sessionGroup, sessionAlias, SECOND) else null
+            val event = if (mode.mangle && buffer.isReadable) mangler.onOutgoing(this@Channel, buffer, metadata) else null
+            val messageId = if(mode.mstoreSend && buffer.isReadable) nextMessageId(bookName, sessionGroup, sessionAlias, SECOND) else null
 
             // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
             // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
@@ -173,7 +173,7 @@ class Channel(
             thenRunAsync({
                 runCatching {
                     logger.trace { "Post process of '${messageId?.toJson()}' message id: ${hexDump(data)}" }
-                    if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
+                    if (mode.mangle && data.isReadable) mangler.postOutgoing(this@Channel, data, metadata)
                     event?.run { messageId?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) } }
                     messageId?.run { onMessage.accept(data, messageId, metadata, eventId) }
                 }.onFailure {
@@ -181,7 +181,7 @@ class Channel(
                 }
             }, sendExecutor)
 
-            if(mode.socketSend && message.isReadable) {
+            if(mode.socketSend && buffer.isReadable) {
                 channel.send(buffer.asReadOnly()).apply {
                     onSuccess { complete(messageId) }
                     onFailure {
