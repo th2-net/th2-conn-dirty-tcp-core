@@ -267,8 +267,8 @@ spec:
 
 * add support for th2 transport protocol
 * migrated to message batcher from common-utils
-* th2-common updated to `5.3.0`
-* th2-common-utils added `2.1.0` version
+* th2-common updated to `5.3.2-dev`
+* th2-common-utils added `2.1.1-dev` version
 
 ## 3.0.0
 
