@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,10 +17,11 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.grpc.MessageID
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import io.netty.buffer.ByteBuf
 import java.util.concurrent.CompletableFuture
 import javax.annotation.concurrent.ThreadSafe
+import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
 
 /**
  * Handles protocol messages and events, maintains session on a set of [channels][IChannel] belonging to a single session
@@ -28,16 +29,25 @@ import javax.annotation.concurrent.ThreadSafe
 @ThreadSafe
 interface IHandler : AutoCloseable {
     /**
-     * Sends provided [message]
+     * Sends provided protobuf [message]
      */
-    fun send(message: RawMessage): CompletableFuture<MessageID>
+    fun send(message: ProtoRawMessage): CompletableFuture<MessageID> {
+        throw UnsupportedOperationException("Protobuf protocol isn't supported to send message")
+    }
+
+    /**
+     * Sends provided transport [message]
+     */
+    fun send(message: RawMessage): CompletableFuture<MessageID> {
+        throw UnsupportedOperationException("th2 transport protocol isn't supported to send message")
+    }
 
     /**
      * This method is called when service is started.
      *
      * For example, it can be used to create main session channel
      */
-    fun onStart(): Unit
+    fun onStart()
 
     /**
      * This method is called after a corresponding [channel] has been opened (e.g. TCP connection is established).

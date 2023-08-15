@@ -1,5 +1,5 @@
 /*
- * Copyright 2022-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,13 +18,14 @@ package com.exactpro.th2.conn.dirty.tcp.core
 
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventID
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IMangler
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
+import io.netty.buffer.ByteBuf
 import io.netty.channel.EventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import java.lang.String.join
@@ -37,7 +38,7 @@ class ChannelFactory(
     private val eventLoopGroup: EventLoopGroup,
     private val shaper: GlobalTrafficShapingHandler,
     private val onEvent: (Event) -> Unit,
-    private val onMessage: (RawMessage.Builder) -> Unit,
+    private val onMessage: MessageAcceptor,
     private val createEvent: (event: CommonEvent, parentId: EventID) -> EventID,
     private val publishConnectEvents: Boolean,
 ) {
@@ -68,8 +69,8 @@ class ChannelFactory(
         val context = sessions[sessionAlias] ?: error("Session does not exist: $sessionAlias")
         require(context.isRoot) { "Parent session is a non-root one: $sessionAlias" }
 
-        val sessionAlias = join("_", sessionAlias, *sessionSuffixes)
-        require(sessionAlias !in channels) { "Session channel already exists: $sessionAlias" }
+        val genSessionAlias = join("_", sessionAlias, *sessionSuffixes)
+        require(genSessionAlias !in channels) { "Session channel already exists: $genSessionAlias" }
 
         val channel = Channel(
             address,
@@ -91,10 +92,10 @@ class ChannelFactory(
             createEvent("Channel: $sessionAlias".toEvent(), context.eventId)
         )
 
-        channels[sessionAlias] = channel
+        channels[genSessionAlias] = channel
 
         if (sessionSuffixes.isNotEmpty()) {
-            sessions[sessionAlias] = context.copy(isRoot = false)
+            sessions[genSessionAlias] = context.copy(isRoot = false)
         }
 
         return channel
@@ -110,6 +111,10 @@ class ChannelFactory(
 
     fun getHandler(sessionGroup: String, sessionAlias: String): IHandler? = synchronized(this) {
         return sessions[sessionAlias]?.takeIf { it.group == sessionGroup }?.handler
+    }
+
+    fun interface MessageAcceptor {
+        fun accept(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?)
     }
 
     private data class SessionContext(

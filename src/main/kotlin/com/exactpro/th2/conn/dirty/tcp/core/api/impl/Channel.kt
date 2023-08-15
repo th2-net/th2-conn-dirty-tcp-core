@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2022 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,7 +21,8 @@ import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.Event
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.message.toJson
+import com.exactpro.th2.conn.dirty.tcp.core.ChannelFactory.MessageAcceptor
 import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
 import com.exactpro.th2.conn.dirty.tcp.core.RateLimiter
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
@@ -31,13 +32,13 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IMangler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.ITcpChannelHandler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.TcpChannel
-import com.exactpro.th2.conn.dirty.tcp.core.util.attachMessage
+import com.exactpro.th2.conn.dirty.tcp.core.util.nextMessageId
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
-import com.exactpro.th2.conn.dirty.tcp.core.util.toMessage
 import com.exactpro.th2.netty.bytebuf.util.asExpandable
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil.hexDump
+import io.netty.buffer.Unpooled
 import io.netty.channel.EventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import mu.KotlinLogging
@@ -65,7 +66,7 @@ class Channel(
     private val handler: IHandler,
     private val mangler: IMangler,
     private val onEvent: (Event) -> Unit,
-    private val onMessage: (RawMessage.Builder) -> Unit,
+    private val onMessage: MessageAcceptor,
     private val executor: ScheduledExecutorService,
     eventLoopGroup: EventLoopGroup,
     shaper: GlobalTrafficShapingHandler,
@@ -73,13 +74,16 @@ class Channel(
 ) : IChannel, ITcpChannelHandler {
     private val logger = KotlinLogging.logger {}
     private val bookName = eventId.bookName
-    private val ioExecutor = Executor(executor.newPipe("io-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
-    private val sendExecutor = Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
+    private val ioExecutor =
+        Executor(executor.newPipe("io-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
+    private val sendExecutor =
+        Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val limiter = RateLimiter(maxMessageRate)
     private val channel = TcpChannel(address, security, eventLoopGroup, ioExecutor, shaper, this)
     private val lock = ReentrantLock()
 
-    @Volatile private var reconnectEnabled = true
+    @Volatile
+    private var reconnectEnabled = true
 
     private var openFuture = CompletableFuture.completedFuture(Unit)
     private var closeFuture = CompletableFuture.completedFuture(Unit)
@@ -159,20 +163,32 @@ class Channel(
             if (mode.handle) handler.onOutgoing(this@Channel, buffer, metadata)
 
             val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
-            val protoMessage = buffer.toMessage(bookName, sessionGroup, sessionAlias, SECOND, metadata, eventId)
+            val messageId = nextMessageId(bookName, sessionGroup, sessionAlias, SECOND)
 
+            // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
+            // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
+            val data = Unpooled.copiedBuffer(buffer).asReadOnly()
             thenRunAsync({
-                if (mode.mangle) mangler.postOutgoing(this@Channel, buffer, metadata)
-                event?.run { storeEvent(attachMessage(protoMessage), eventId ?: this@Channel.eventId) }
-                onMessage(protoMessage)
+                runCatching {
+                    logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
+                    if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
+                    event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
+                    onMessage.accept(data, messageId, metadata, eventId)
+                }.onFailure {
+                    logger.error(it) { "Post process of '${messageId.toJson()}' message id failure" }
+                }
             }, sendExecutor)
 
             channel.send(buffer.asReadOnly()).apply {
-                onSuccess { complete(protoMessage.metadata.id) }
-                onFailure { completeExceptionally(it) }
+                onSuccess { complete(messageId) }
+                onFailure {
+                    logger.error(it) { "TcpChannel.send operation of '${messageId.toJson()}' message id failure" }
+                    completeExceptionally(it)
+                }
                 onCancel { cancel(true) }
             }
         } catch (e: Exception) {
+            logger.error(e) { "Channel.send operation failure" }
             completeExceptionally(e)
         } finally {
             lock.unlock()
@@ -231,9 +247,11 @@ class Channel(
         logger.trace { "Received message on '$sessionAlias' session: ${hexDump(message)}" }
         val metadata = handler.onIncoming(this, message.asReadOnly())
         mangler.onIncoming(this, message.asReadOnly(), metadata)
-        val protoMessage = message.toMessage(bookName, sessionGroup, sessionAlias, FIRST, metadata)
-        onMessage(protoMessage)
+
+        val messageCopy = Unpooled.copiedBuffer(message)
         message.release()
+
+        onMessage.accept(messageCopy, nextMessageId(bookName, sessionGroup, sessionAlias, FIRST), metadata, null)
     }
 
     override fun onError(cause: Throwable): Unit = onError("Error on: $address (session: $sessionAlias)", cause)
@@ -262,14 +280,17 @@ class Channel(
     private fun storeEvent(event: CommonEvent, parentEventId: EventID) = onEvent(event.toProto(parentEventId))
 
     companion object {
+        @Suppress("UNCHECKED_CAST")
         fun <V, F : NettyFuture<V>> F.onSuccess(action: () -> Unit): F {
             return addListener { if (isSuccess) action() } as F
         }
 
+        @Suppress("UNCHECKED_CAST")
         fun <V, F : NettyFuture<V>> F.onFailure(action: (cause: Throwable) -> Unit): F {
             return addListener { cause()?.run(action) } as F
         }
 
+        @Suppress("UNCHECKED_CAST")
         fun <V, F : NettyFuture<V>> F.onCancel(action: () -> Unit): F {
             return addListener { if (isCancelled) action() } as F
         }

@@ -18,7 +18,6 @@ package com.exactpro.th2.conn.dirty.tcp.core.api.impl
 
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
-import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.conn.dirty.tcp.core.ChannelFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
@@ -58,5 +57,7 @@ class HandlerContext(
     override fun destroyChannel(channel: IChannel): Unit = channelFactory.destroyChannel(channel)
     override fun get(dictionary: DictionaryType): InputStream = getDictionary(dictionary)
     override fun send(event: Event): Unit = sendEvent(event)
+
+    @Suppress("UNCHECKED_CAST")
     override fun <T : Any> getGrpcService(serviceClass: Class<T>): T = getService(serviceClass) as T
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,16 +36,14 @@ import com.exactpro.th2.common.grpc.Message
 import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.grpc.RawMessage
-import com.exactpro.th2.common.message.bookName
-import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.plusAssign
-import com.exactpro.th2.common.message.sequence
 import com.exactpro.th2.common.message.sessionAlias
-import com.exactpro.th2.common.message.sessionGroup
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
+import com.exactpro.th2.common.utils.event.toTransport
+import com.exactpro.th2.common.utils.message.toTransport
 import com.google.protobuf.ByteString
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.Unpooled
@@ -55,6 +53,8 @@ import java.util.ServiceLoader
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit.SECONDS
 import java.util.concurrent.atomic.AtomicLong
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageGroup as TransportMessageGroup
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage as TransportRawMessage
 
 private val INCOMING_SEQUENCES = ConcurrentHashMap<String, () -> Long>()
 private val OUTGOING_SEQUENCES = ConcurrentHashMap<String, () -> Long>()
@@ -69,24 +69,45 @@ private fun String.getSequence(direction: Direction) = when (direction) {
     UNRECOGNIZED -> error("Unknown direction $direction in session: $this")
 }.invoke()
 
-fun ByteBuf.toMessage(
+fun nextMessageId(
     bookName: String,
     sessionGroup: String,
     sessionAlias: String,
-    direction: Direction,
+    direction: Direction
+): MessageID = MessageID.newBuilder().apply {
+    this.bookName = bookName
+    this.direction = direction
+    this.sequence = sessionAlias.getSequence(direction)
+    connectionIdBuilder.apply {
+        this.sessionGroup = sessionGroup
+        this.sessionAlias = sessionAlias
+    }
+}.build()
+
+fun ByteBuf.toProtoRawMessageBuilder(
+    messageId: MessageID,
     metadata: Map<String, String>,
     eventId: EventID? = null,
 ): RawMessage.Builder = RawMessage.newBuilder().apply {
     eventId?.let { this.parentEventId = it }
 
     this.body = ByteString.copyFrom(asReadOnly().nioBuffer())
-    this.bookName = bookName
-    this.sessionGroup = sessionGroup
-    this.sessionAlias = sessionAlias
-    this.direction = direction
-    this.sequence = sessionAlias.getSequence(direction)
+    metadataBuilder.apply {
+        id = messageId
+        putAllProperties(metadata)
+    }
+}
 
-    this.metadataBuilder.putAllProperties(metadata)
+fun ByteBuf.toTransportRawMessageBuilder(
+    messageId: MessageID,
+    metadata: Map<String, String>,
+    eventId: EventID? = null,
+): TransportRawMessage.Builder = TransportRawMessage.builder().apply {
+    eventId?.let { setEventId(it.toTransport()) }
+
+    setBody(asReadOnly())
+    setId(messageId.toTransport())
+    setMetadata(metadata.toMutableMap())
 }
 
 fun String.toEvent(): Event = toEvent(PASSED)
@@ -118,6 +139,10 @@ fun RawMessage.Builder.toGroup(): MessageGroup = MessageGroup.newBuilder().run {
     plusAssign(this@toGroup)
     build()
 }
+
+fun TransportRawMessage.toGroup(): TransportMessageGroup = TransportMessageGroup.builder().apply {
+    addMessage(this@toGroup)
+}.build()
 
 fun ByteString.toByteBuf(): ByteBuf = asReadOnlyByteBuffer().run(Unpooled.buffer(size())::writeBytes)
 

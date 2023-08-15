@@ -34,7 +34,17 @@ import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.common.schema.message.QueueAttribute
 import com.exactpro.th2.common.schema.message.QueueAttribute.EVENT
 import com.exactpro.th2.common.schema.message.QueueAttribute.PUBLISH
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Direction.OUTGOING
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.GroupBatch
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.Message
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import com.exactpro.th2.common.utils.event.EventBatcher
+import com.exactpro.th2.common.utils.event.transport.toProto
+import com.exactpro.th2.common.utils.message.RAW_DIRECTION_SELECTOR
+import com.exactpro.th2.common.utils.message.RAW_GROUP_SELECTOR
+import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.ALIAS_SELECTOR
+import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.GROUP_SELECTOR
+import com.exactpro.th2.common.utils.message.transport.toProto
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
@@ -48,6 +58,9 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.sessionAlias
 import com.exactpro.th2.conn.dirty.tcp.core.util.storeEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
+import com.exactpro.th2.conn.dirty.tcp.core.util.toProtoRawMessageBuilder
+import com.exactpro.th2.conn.dirty.tcp.core.util.toTransportRawMessageBuilder
+import io.netty.buffer.ByteBuf
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import mu.KotlinLogging
@@ -55,20 +68,22 @@ import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageGroup as TransportMessageGroup
+import com.exactpro.th2.common.utils.message.RawMessageBatcher as ProtoMessageBatcher
+import com.exactpro.th2.common.utils.message.transport.MessageBatcher as TransportMessageBatcher
 
 class Microservice(
     private val rootEventId: EventID,
     private val settings: Settings,
     private val readDictionary: (DictionaryType) -> InputStream,
     private val eventRouter: MessageRouter<EventBatch>,
-    private val messageRouter: MessageRouter<MessageGroupBatch>,
+    private val protoMessageRouter: MessageRouter<MessageGroupBatch>,
+    private val transportMessageRouter: MessageRouter<GroupBatch>,
     private val handlerFactory: IHandlerFactory,
     private val manglerFactory: IManglerFactory,
     private val grpcRouter: GrpcRouter,
     private val registerResource: (name: String, destructor: () -> Unit) -> Unit,
 ) {
-    private val logger = KotlinLogging.logger {}
-
     private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId) }
     private val groupEventIds = ConcurrentHashMap<String, EventID>()
     private val sessionEventIds = ConcurrentHashMap<String, EventID>()
@@ -79,7 +94,7 @@ class Microservice(
             shutdown()
 
             if (!awaitTermination(5, SECONDS)) {
-                logger.warn { "Failed to shutdown executor in 5 seconds" }
+                K_LOGGER.warn { "Failed to shutdown executor in 5 seconds" }
                 shutdownNow()
             }
         }
@@ -95,18 +110,6 @@ class Microservice(
         registerResource("traffic-shaper", ::release)
     }
 
-    private val messageBatcher = MessageBatcher(
-        settings.maxBatchSize,
-        settings.maxFlushTime,
-        if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
-        executor
-    ) { batch ->
-        messageRouter.send(batch, QueueAttribute.RAW.value)
-        publishSentEvents(batch)
-    }.apply {
-        registerResource("message-batcher", ::close)
-    }
-
     private val eventBatcher = EventBatcher(
         maxBatchSizeInItems = settings.maxBatchSize,
         maxFlushTime = settings.maxFlushTime,
@@ -119,17 +122,56 @@ class Microservice(
 
     private val handlers = ConcurrentHashMap<String, MutableMap<String, IHandler>>()
 
-    private val channelFactory = ChannelFactory(
-        executor,
-        eventLoopGroup,
-        shaper,
-        eventBatcher::onEvent,
-        messageBatcher::onMessage,
-        eventRouter::storeEvent,
-        settings.publishConnectEvents
-    )
+    private val channelFactory: ChannelFactory
 
     init {
+        val messageAcceptor = if (settings.useTransport) {
+            val messageBatcher = TransportMessageBatcher(
+                settings.maxBatchSize,
+                settings.maxFlushTime,
+                bookName,
+                if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
+                executor
+            ) { batch ->
+                transportMessageRouter.send(batch)
+                publishSentEvents(batch)
+            }.apply {
+                registerResource("transport-message-batcher", ::close)
+            }
+
+            fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) {
+                messageBatcher.onMessage(
+                    buff.toTransportRawMessageBuilder(messageId, metadata, eventId), messageId.connectionId.sessionGroup
+                )
+            }
+        } else {
+            val messageBatcher = ProtoMessageBatcher(
+                settings.maxBatchSize,
+                settings.maxFlushTime,
+                if (settings.batchByGroup) RAW_GROUP_SELECTOR else RAW_DIRECTION_SELECTOR,
+                executor
+            ) { batch ->
+                protoMessageRouter.send(batch, QueueAttribute.RAW.value)
+                publishSentEvents(batch)
+            }.apply {
+                registerResource("proto-message-batcher", ::close)
+            }
+
+            fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) {
+                messageBatcher.onMessage(buff.toProtoRawMessageBuilder(messageId, metadata, eventId))
+            }
+        }
+
+        channelFactory = ChannelFactory(
+            executor,
+            eventLoopGroup,
+            shaper,
+            eventBatcher::onEvent,
+            messageAcceptor,
+            eventRouter::storeEvent,
+            settings.publishConnectEvents
+        )
+
         settings.sessions.forEach(::initSession)
     }
 
@@ -142,12 +184,24 @@ class Microservice(
             }
         }
 
-        runCatching {
-            checkNotNull(messageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE))
+        val proto = runCatching {
+            checkNotNull(protoMessageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE, RAW_QUEUE_ATTRIBUTE))
         }.onSuccess { monitor ->
-            registerResource("raw-monitor", monitor::unsubscribe)
+            registerResource("proto-raw-monitor", monitor::unsubscribe)
         }.onFailure {
-            throw IllegalStateException("Failed to subscribe to input queue", it)
+            K_LOGGER.warn(it) { "Failed to subscribe to input protobuf queue" }
+        }
+
+        val transport = runCatching {
+            checkNotNull(transportMessageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE, TRANSPORT_QUEUE_ATTRIBUTE))
+        }.onSuccess { monitor ->
+            registerResource("transport-raw-monitor", monitor::unsubscribe)
+        }.onFailure {
+            K_LOGGER.warn(it) { "Failed to subscribe to input transport queue" }
+        }
+
+        if (proto.isFailure && transport.isFailure) {
+            error("Subscribe pin should be declared at least one of protobuf or transport protocols")
         }
     }
 
@@ -155,21 +209,21 @@ class Microservice(
     private fun handleBatch(metadata: DeliveryMetadata, batch: MessageGroupBatch) {
         batch.groupsList.forEach { group ->
             group.runCatching(::handleGroup).recoverCatching { cause ->
-                onError("Failed to handle message group", group, cause)
+                onError("Failed to handle protobuf message group", group, cause)
             }
         }
     }
 
     private fun handleGroup(group: MessageGroup) {
         if (group.messagesCount != 1) {
-            onError("Message group must contain only a single message", group)
+            onError("Protobuf message group must contain only a single message", group)
             return
         }
 
         val message = group.messagesList[0]
 
         if (!message.hasRawMessage()) {
-            onError("Message is not a raw message", message)
+            onError("Protobuf message is not a raw message", message)
             return
         }
 
@@ -191,7 +245,62 @@ class Microservice(
         }
 
         handler.send(rawMessage).exceptionally {
-            onError("Failed to send message", message, it)
+            onError("Failed to send protobuf message", message, it)
+            null
+        }
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun handleBatch(metadata: DeliveryMetadata, batch: GroupBatch) {
+        batch.groups.forEach { group ->
+            group.runCatching {
+                handleGroup(group, batch.book, batch.sessionGroup)
+            }.recoverCatching { cause ->
+                onError("Failed to handle transport message group", group, batch.book, batch.sessionGroup, cause)
+            }
+        }
+    }
+
+    private fun handleGroup(group: TransportMessageGroup, book: String, sessionGroup: String) {
+        if (group.messages.size != 1) {
+            onError("Transport message group must contain only a single message", group, book, sessionGroup)
+            return
+        }
+
+        val message = group.messages[0]
+
+        if (message !is RawMessage) {
+            onError("Transport message is not a raw message", message, book, sessionGroup)
+            return
+        }
+
+        message.eventId?.run {
+            if (bookName != rootEventId.bookName) {
+                onError(
+                    "Unexpected book name: $bookName (expected: ${rootEventId.bookName})",
+                    message,
+                    book,
+                    sessionGroup
+                )
+                return
+            }
+        }
+
+        val sessionAlias = message.id.sessionAlias
+        val resolvedSessionGroup = sessionGroup.ifBlank { sessionAlias }
+
+        val handler = channelFactory.getHandler(resolvedSessionGroup, sessionAlias) ?: run {
+            onError(
+                "Unknown session group or alias: $resolvedSessionGroup/$sessionAlias",
+                message,
+                book,
+                resolvedSessionGroup
+            )
+            return
+        }
+
+        handler.send(message).exceptionally {
+            onError("Failed to send transport message", message, book, resolvedSessionGroup, it)
             null
         }
     }
@@ -210,14 +319,21 @@ class Microservice(
 
         val sendEvent: (Event) -> Unit = { onEvent(it, sessionEventId) }
 
-        val handlerContext = HandlerContext(session.handler, bookName, sessionAlias, channelFactory, readDictionary, sendEvent) {clazz -> grpcRouter.getService(clazz)}
+        val handlerContext = HandlerContext(
+            session.handler,
+            bookName,
+            sessionAlias,
+            channelFactory,
+            readDictionary,
+            sendEvent
+        ) { clazz -> grpcRouter.getService(clazz) }
         val handler = handlerFactory.create(handlerContext)
 
         val mangler = when (val settings = session.mangler) {
             null -> NoOpMangler
             else -> manglerFactory.create(ManglerContext(settings, readDictionary, sendEvent))
         }
-        
+
         channelFactory.registerSession(sessionGroup, sessionAlias, handler, mangler, sessionEventId)
 
         registerResource("handler-$sessionAlias", handler::close)
@@ -229,15 +345,30 @@ class Microservice(
     private fun publishSentEvents(batch: MessageGroupBatch) {
         if (!settings.publishSentEvents) return
 
-        val eventMessages = HashMap<EventID, MutableList<MessageID>>().apply {
+        publishSentEvent(hashMapOf<EventID, MutableList<MessageID>>().apply {
             for (group in batch.groupsList) {
                 val message = group.messagesList[0].rawMessage
                 val eventId = message.eventId ?: continue
                 if (message.direction != SECOND) continue
                 getOrPut(eventId, ::ArrayList) += message.metadata.id
             }
-        }
+        })
+    }
 
+    private fun publishSentEvents(batch: GroupBatch) {
+        if (!settings.publishSentEvents) return
+
+        publishSentEvent(hashMapOf<EventID, MutableList<MessageID>>().apply {
+            for (group in batch.groups) {
+                val message = group.messages[0]
+                val eventId = message.eventId ?: continue
+                if (message.id.direction != OUTGOING) continue
+                getOrPut(eventId.toProto(), ::ArrayList) += message.id.toProto(batch.book, batch.sessionGroup)
+            }
+        })
+    }
+
+    private fun publishSentEvent(eventMessages: HashMap<EventID, MutableList<MessageID>>) {
         for ((eventId, messageIds) in eventMessages) {
             val event = "Sent ${messageIds.size} message(s)".toEvent()
             messageIds.forEach(event::messageID)
@@ -250,11 +381,25 @@ class Microservice(
     }
 
     private fun onError(error: String, message: AnyMessage, cause: Throwable? = null) {
-        val id = message.messageId
-        val event = error.toErrorEvent(cause).messageID(id)
-        logger.error("$error (message: ${id.logId})", cause)
-        onEvent(event, message.getErrorEventId())
+        onError(error, cause, message.messageId, message.getErrorEventId())
     }
+
+    private fun onError(
+        error: String,
+        message: Message<*>,
+        book: String,
+        sessionGroup: String,
+        cause: Throwable? = null
+    ) {
+        onError(error, cause, message.id.toProto(book, sessionGroup), message.getErrorEventId())
+    }
+
+    private fun onError(error: String, cause: Throwable?, id: MessageID, parentEventId: EventID) {
+        val event = error.toErrorEvent(cause).messageID(id)
+        K_LOGGER.error("$error (message: ${id.logId})", cause)
+        onEvent(event, parentEventId)
+    }
+
 
     private fun onError(error: String, group: MessageGroup, cause: Throwable? = null) {
         val messageIds = group.messagesList.groupBy(
@@ -262,7 +407,26 @@ class Microservice(
             { it.messageId }
         )
 
-        logger.error(cause) { "$error (messages: ${messageIds.values.flatten().map(MessageID::logId)})" }
+        onError(cause, error, messageIds)
+    }
+
+    private fun onError(
+        error: String,
+        group: TransportMessageGroup,
+        book: String,
+        sessionGroup: String,
+        cause: Throwable? = null
+    ) {
+        val messageIds = group.messages.groupBy(
+            { it.getErrorEventId() },
+            { it.id.toProto(book, sessionGroup) }
+        )
+
+        onError(cause, error, messageIds)
+    }
+
+    private fun onError(cause: Throwable?, error: String, messageIds: Map<EventID, List<MessageID>>) {
+        K_LOGGER.error(cause) { "$error (messages: ${messageIds.values.flatten().map(MessageID::logId)})" }
 
         messageIds.forEach { (parentEventId, messageIds) ->
             val event = error.toErrorEvent(cause)
@@ -275,7 +439,15 @@ class Microservice(
         return eventId ?: sessionEventIds[sessionAlias] ?: errorEventId
     }
 
+    private fun Message<*>.getErrorEventId(): EventID {
+        return eventId?.toProto() ?: sessionEventIds[id.sessionAlias] ?: errorEventId
+    }
+
     companion object {
+        private val K_LOGGER = KotlinLogging.logger {}
+
         private const val INPUT_QUEUE_ATTRIBUTE = "send"
+        private const val RAW_QUEUE_ATTRIBUTE = "raw"
+        private const val TRANSPORT_QUEUE_ATTRIBUTE = "transport-group"
     }
 }

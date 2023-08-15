@@ -80,14 +80,16 @@ fun main(args: Array<String>) = try {
 
     val settings = factory.getCustomConfiguration(Settings::class.java, mapper)
     val eventRouter = factory.eventBatchRouter
-    val messageRouter = factory.messageRouterMessageGroupBatch
+    val protoMessageRouter = factory.messageRouterMessageGroupBatch
+    val transportMessageRouter = factory.transportGroupBatchRouter
 
     Microservice(
         factory.rootEventId,
         settings,
         factory::readDictionary,
         eventRouter,
-        messageRouter,
+        protoMessageRouter,
+        transportMessageRouter,
         handlerFactory,
         manglerFactory,
         factory.grpcRouter
@@ -127,11 +129,14 @@ data class Settings(
     val appThreads: Int = sessions.size * 2,
     val maxBatchSize: Int = 1000,
     val maxFlushTime: Long = 1000,
+    //FIXME: would be better to remove this option because cradle group concept doesn't support publishing one group from several sources
+    // and router for transport protocol doesn't support batch split
     val batchByGroup: Boolean = true,
     val publishSentEvents: Boolean = true,
     val publishConnectEvents: Boolean = true,
     val sendLimit: Long = 0,
     val receiveLimit: Long = 0,
+    val useTransport: Boolean = false,
 ) {
     init {
         require(sessions.isNotEmpty()) { "'${::sessions.name}' is empty" }
