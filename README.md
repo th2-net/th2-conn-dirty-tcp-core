@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.1.0)
+# th2-conn-dirty-tcp-core (3.1.1)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -54,6 +54,7 @@ Outgoing message can be handled differently depending on send mode. There are 4 
 
 + *sessionGroup* - session group for incoming/outgoing th2 messages (equal to session alias by default)
 + *sessionAlias* - session alias for incoming/outgoing th2 messages
++ *bookName* - optional bookName which will be used for events/messages instead of default one. Default: `null`
 + *handler* - handler settings
 + *mangler* - mangler settings (`null` by default)
 
@@ -262,6 +263,9 @@ spec:
 ```
 
 # Changelog
+
+## 3.1.1
+* ability to override default book name. 
 
 ## 3.1.0
 
