@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.1.0)
+# th2-conn-dirty-tcp-core (3.1.1)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -264,13 +264,15 @@ spec:
 
 # Changelog
 
+## 3.1.1
+* ability to override default book name. 
+
 ## 3.1.0
 
 * add support for th2 transport protocol
 * migrated to message batcher from common-utils
-* ability to override default book name. 
-* th2-common updated to `5.3.0`
-* th2-common-utils added `2.1.0` version
+* th2-common updated to `5.3.2-dev`
+* th2-common-utils added `2.1.1-dev` version
 
 ## 3.0.0
 
