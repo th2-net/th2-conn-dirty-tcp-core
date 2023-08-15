@@ -158,13 +158,13 @@ signing {
 }
 
 dependencies {
-    api platform('com.exactpro.th2:bom:4.5.0-TH2-5035-+')
+    api platform('com.exactpro.th2:bom:4.5.0')
 
-    implementation('com.exactpro.th2:common:5.4.0-TH2-5035-+') {
+    implementation('com.exactpro.th2:common:5.4.0-dev') {
         exclude group: 'com.exactpro.th2', module: 'cradle-core'
         exclude group: 'com.exactpro.th2', module: 'cradle-cassandra'
     }
-    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.2.0-TH2-5035-+'
+    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.2.0-dev'
     implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
 
     implementation 'org.slf4j:slf4j-api'
