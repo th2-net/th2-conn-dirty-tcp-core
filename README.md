@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.1.0)
+# th2-conn-dirty-tcp-core (3.2.0)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -262,6 +262,13 @@ spec:
 ```
 
 # Changelog
+
+## 3.2.0
+
+* updated bom: `4.5.0-dev`
+* updated common: `5.4.0-dev`
+* updated common-utils: `2.2.0-dev`
+* updated kotlin: `1.8.22`
 
 ## 3.1.0
 
