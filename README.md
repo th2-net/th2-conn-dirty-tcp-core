@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.6.0)
+# th2-conn-dirty-tcp-core (3.7.0)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -266,6 +266,15 @@ spec:
 ```
 
 # Changelog
+
+## 3.7.0
+
+### Added:
+
+* API for sending several messages in a single buffer.
+  That might be used in order to try to send messages in a single TCP packet (but there is no guarantee for that).
+  If received batch has more than 1 group the messages from those groups will be grouped in a single buffer
+  and sent to the corresponding connection
 
 ## 3.6.0
 * provided ability to override component book name for session.
