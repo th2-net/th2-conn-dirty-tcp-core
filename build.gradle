@@ -158,7 +158,7 @@ signing {
 dependencies {
     api platform('com.exactpro.th2:bom:4.5.0')
 
-    implementation('com.exactpro.th2:common:5.4.0-dev') {
+    implementation('com.exactpro.th2:common:5.4.2-dev') {
         exclude group: 'com.exactpro.th2', module: 'cradle-core'
         exclude group: 'com.exactpro.th2', module: 'cradle-cassandra'
     }
