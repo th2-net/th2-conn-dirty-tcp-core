@@ -321,8 +321,8 @@ class Microservice(
                     }
                 }
 
-        for ((keyPair, messagesToSend) in messagesByDestination) {
-            val (sessionAlias, sessionGroup, book) = keyPair
+        for ((sessionKey, messagesToSend) in messagesByDestination) {
+            val (sessionAlias, sessionGroup, book) = sessionKey
             val handler = channelFactory.getHandler(book, sessionGroup, sessionAlias) ?: run {
                 onHandleError("Unknown session book or group or alias: $book/$sessionGroup/$sessionAlias", messagesToSend)
                 return
@@ -432,8 +432,8 @@ class Microservice(
                     )
                 }
 
-        for ((keyPair, messagesToSend) in messagesByDestination) {
-            val (sessionAlias, group) = keyPair
+        for ((sessionKey, messagesToSend) in messagesByDestination) {
+            val (sessionAlias, group) = sessionKey
             val handler = channelFactory.getHandler(batchBook, group, sessionAlias) ?: run {
                 onHandleError(
                     "Unknown session group or alias: $group/$sessionAlias",
