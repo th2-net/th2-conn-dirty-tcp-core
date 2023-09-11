@@ -293,9 +293,10 @@ class Microservice(
 
         for ((sessionKey, messagesToSend) in messagesByDestination) {
             val (sessionAlias, sessionGroup) = sessionKey
-            val handler = channelFactory.getHandler(sessionGroup, sessionAlias) ?: run {
+            val handler = channelFactory.getHandler(sessionGroup, sessionAlias)
+            if (handler == null) {
                 onError("Unknown session group or alias: $sessionGroup/$sessionAlias", messagesToSend)
-                return
+                continue
             }
 
             handler.sendAllProto(messagesToSend.map { it.rawMessage }).exceptionally {
@@ -396,10 +397,11 @@ class Microservice(
 
         for ((sessionKey, messagesToSend) in messagesByDestination) {
             val (sessionAlias, group) = sessionKey
-            val handler = channelFactory.getHandler(group, sessionAlias) ?: run {
+            val handler = channelFactory.getHandler(group, sessionAlias)
+            if (handler == null) {
                 onError("Unknown session group or alias: $group/$sessionAlias",
                     messagesToSend, book, sessionGroup)
-                return
+                continue
             }
 
             handler.sendAllTransport(messagesToSend).exceptionally {
