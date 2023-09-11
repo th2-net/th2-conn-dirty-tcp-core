@@ -284,15 +284,15 @@ class Microservice(
             return
         }
 
-        val messagesByDestination: Map<Pair<String, String>, List<AnyMessage>> =
+        val messagesByDestination: Map<SessionKey, List<AnyMessage>> =
             batch.groupsList.asSequence()
                 .map { it.messagesList.single() }
                 .groupBy {
-                    it.rawMessage.run { sessionAlias to sessionGroup.ifBlank { sessionAlias } }
+                    it.rawMessage.run { sessionKey(sessionAlias, sessionGroup) }
                 }
 
-        for ((keyPair, messagesToSend) in messagesByDestination) {
-            val (sessionAlias, sessionGroup) = keyPair
+        for ((sessionKey, messagesToSend) in messagesByDestination) {
+            val (sessionAlias, sessionGroup) = sessionKey
             val handler = channelFactory.getHandler(sessionGroup, sessionAlias) ?: run {
                 onError("Unknown session group or alias: $sessionGroup/$sessionAlias", messagesToSend)
                 return
@@ -387,15 +387,15 @@ class Microservice(
             return
         }
 
-        val messagesByDestination: Map<Pair<String, String>, List<RawMessage>> =
+        val messagesByDestination: Map<SessionKey, List<RawMessage>> =
             batch.groups.asSequence()
                 .map { it.messages.single().asRaw() }
                 .groupBy {
-                    it.id.sessionAlias to sessionGroup.ifBlank { it.id.sessionAlias }
+                    sessionKey(it.id.sessionAlias, sessionGroup)
                 }
 
-        for ((keyPair, messagesToSend) in messagesByDestination) {
-            val (sessionAlias, group) = keyPair
+        for ((sessionKey, messagesToSend) in messagesByDestination) {
+            val (sessionAlias, group) = sessionKey
             val handler = channelFactory.getHandler(group, sessionAlias) ?: run {
                 onError("Unknown session group or alias: $group/$sessionAlias",
                     messagesToSend, book, sessionGroup)
@@ -408,6 +408,19 @@ class Microservice(
             }
         }
     }
+
+    private data class SessionKey(
+        val alias: String,
+        val group: String,
+    )
+
+    private fun sessionKey(
+        alias: String,
+        group: String,
+    ) : SessionKey = SessionKey(
+        alias = alias,
+        group = group.ifBlank { alias },
+    )
 
     private fun initSession(session: SessionSettings) {
         val sessionGroup = session.sessionGroup
