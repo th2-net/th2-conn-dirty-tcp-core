@@ -53,7 +53,7 @@ interface IHandler : AutoCloseable {
      * Handler will try to send all the transport [messages] in a single buffer
      */
     fun sendAllTransport(messages: List<RawMessage>): CompletableFuture<List<MessageID>> {
-        throw UnsupportedOperationException("sending multiple protobuf messages is not supported")
+        throw UnsupportedOperationException("sending multiple th2 transport messages is not supported")
     }
 
     /**
