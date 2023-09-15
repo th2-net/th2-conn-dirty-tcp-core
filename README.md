@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.0.0)
+# th2-conn-dirty-tcp-core (3.0.1)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -249,6 +249,9 @@ spec:
 ```
 
 # Changelog
+
+## 3.0.1
+* Fix error while saving mangler events.
 
 ## 3.0.0
 
