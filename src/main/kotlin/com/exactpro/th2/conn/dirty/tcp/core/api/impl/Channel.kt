@@ -172,8 +172,9 @@ class Channel(
                 runCatching {
                     logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
                     if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
-                    event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
                     onMessage.accept(data, messageId, metadata, eventId)
+                    runCatching { event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) } }
+                        .onFailure { logger.error(it) { "Error while publishing mangler event." } }
                 }.onFailure {
                     logger.error(it) { "Post process of '${messageId.toJson()}' message id failure" }
                 }
