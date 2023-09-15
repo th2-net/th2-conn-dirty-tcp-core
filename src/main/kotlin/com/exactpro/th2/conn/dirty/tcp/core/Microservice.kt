@@ -27,6 +27,7 @@ import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
+import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.DeliveryMetadata
@@ -42,6 +43,7 @@ import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.event.transport.toProto
 import com.exactpro.th2.common.utils.message.RAW_DIRECTION_SELECTOR
 import com.exactpro.th2.common.utils.message.RAW_GROUP_SELECTOR
+import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.ALIAS_SELECTOR
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.GROUP_SELECTOR
 import com.exactpro.th2.common.utils.message.transport.toProto
@@ -139,10 +141,10 @@ class Microservice(
                 registerResource("transport-message-batcher", ::close)
             }
 
-            fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) {
-                messageBatcher.onMessage(
-                    buff.toTransportRawMessageBuilder(messageId, metadata, eventId), messageId.connectionId.sessionGroup
-                )
+            fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?): MessageID {
+                val builder = buff.toTransportRawMessageBuilder(messageId, metadata, eventId)
+                messageBatcher.onMessage(builder, messageId.connectionId.sessionGroup)
+                return messageId.toBuilder().setTimestamp(builder.idBuilder().timestamp.toTimestamp()).build()
             }
         } else {
             val messageBatcher = ProtoMessageBatcher(
@@ -157,8 +159,10 @@ class Microservice(
                 registerResource("proto-message-batcher", ::close)
             }
 
-            fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) {
-                messageBatcher.onMessage(buff.toProtoRawMessageBuilder(messageId, metadata, eventId))
+            fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?): MessageID {
+                val builder = buff.toProtoRawMessageBuilder(messageId, metadata, eventId)
+                messageBatcher.onMessage(builder)
+                return builder.id
             }
         }
 
