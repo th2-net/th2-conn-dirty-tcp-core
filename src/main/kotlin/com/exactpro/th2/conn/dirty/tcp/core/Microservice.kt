@@ -144,7 +144,11 @@ class Microservice(
             fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?): MessageID {
                 val builder = buff.toTransportRawMessageBuilder(messageId, metadata, eventId)
                 messageBatcher.onMessage(builder, messageId.connectionId.sessionGroup)
-                return messageId.toBuilder().setTimestamp(builder.idBuilder().timestamp.toTimestamp()).build()
+                // message ID is updated by messageBatcher (the timestamp is set)
+                return builder.idBuilder().build().toProto(
+                    book = messageId.bookName,
+                    sessionGroup = messageId.connectionId.sessionGroup,
+                )
             }
         } else {
             val messageBatcher = ProtoMessageBatcher(
@@ -162,6 +166,7 @@ class Microservice(
             fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?): MessageID {
                 val builder = buff.toProtoRawMessageBuilder(messageId, metadata, eventId)
                 messageBatcher.onMessage(builder)
+                // message ID is updated by messageBatcher (the timestamp is set)
                 return builder.id
             }
         }
