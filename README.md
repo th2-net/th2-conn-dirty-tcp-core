@@ -263,6 +263,9 @@ spec:
 
 # Changelog
 
+## 3.2.1
+* Avoid messages loss in case of failures while saving mangler events.
+
 ## 3.2.0
 
 * updated bom: `4.5.0-dev`
