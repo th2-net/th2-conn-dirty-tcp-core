@@ -6,7 +6,6 @@ on:
     - master
     - version-*
     - dependabot*
-    - dev-version-*
     # paths:
     # - gradle.properties
     paths-ignore:

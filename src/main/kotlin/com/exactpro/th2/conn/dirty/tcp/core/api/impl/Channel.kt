@@ -174,8 +174,10 @@ class Channel(
                 runCatching {
                     logger.trace { "Post process of '${messageId?.toJson()}' message id: ${hexDump(data)}" }
                     if (mode.mangle && data.isReadable) mangler.postOutgoing(this@Channel, data, metadata)
-                    event?.run { messageId?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) } }
-                    messageId?.run { onMessage.accept(data, messageId, metadata, eventId) }
+                    val resolvedMessageId = runCatching { if(messageId != null) onMessage.accept(data, messageId, metadata, eventId) else null }
+                        .onFailure { logger.error(it) { "Error while adding message into batcher" } }.getOrNull()
+                    runCatching { if(resolvedMessageId != null && event != null) { storeEvent(event.messageID(resolvedMessageId), eventId ?: this@Channel.eventId) } }
+                        .onFailure { logger.error(it) { "Error while publishing mangler event." } }
                 }.onFailure {
                     logger.error(it) { "Post process of '${messageId?.toJson()}' message id failure" }
                 }
