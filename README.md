@@ -263,6 +263,11 @@ spec:
 
 # Changelog
 
+## 3.2.2
+
+* Add `th2.operation_timestamp` property to a message.
+  It contains the send/receive operation timestamp in ISO format: `2023-10-16T09:21:12.178299Z`
+
 ## 3.2.1
 * Avoid messages loss in case of failures while saving mangler events.
 
