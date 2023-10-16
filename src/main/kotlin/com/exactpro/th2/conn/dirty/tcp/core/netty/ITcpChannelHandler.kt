@@ -17,11 +17,17 @@
 package com.exactpro.th2.conn.dirty.tcp.core.netty
 
 import io.netty.buffer.ByteBuf
+import java.time.Instant
 
 interface ITcpChannelHandler {
     fun onOpen()
     fun onReceive(buffer: ByteBuf): ByteBuf?
-    fun onMessage(message: ByteBuf)
+
+    /**
+     * Will be invoked on the [message] read from the channel using [onReceive] method.
+     * The [receiveTimestamp] will contain the timestamp when the bytes were received by channel.
+     */
+    fun onMessage(message: ByteBuf, receiveTimestamp: Instant)
     fun onError(cause: Throwable)
     fun onClose()
 }

@@ -21,11 +21,12 @@ import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.ByteToMessageDecoder
 import mu.KotlinLogging
+import java.time.Instant
 
 class MainHandler(
     private val onConnect: () -> Unit,
     private val onReceive: (ByteBuf) -> ByteBuf?,
-    private val onMessage: (ByteBuf) -> Unit,
+    private val onMessage: (ByteBuf, Instant) -> Unit,
     private val onDisconnect: () -> Unit,
     private val onEvent: (Runnable) -> Unit
 ) : ByteToMessageDecoder() {
@@ -45,11 +46,12 @@ class MainHandler(
     override fun decode(ctx: ChannelHandlerContext, buf: ByteBuf, out: MutableList<Any>) {
         logger.trace { "Attempting to decode data received from: ${ctx.channel().remoteAddress()} (data: ${hexDump(buf)})" }
 
+        val receiveTime = Instant.now()
         while (buf.isReadable) {
             val message = buf.readMessage(ctx) ?: break
 
             onEvent {
-                message.runCatching(onMessage).onFailure {
+                runCatching { onMessage(message, receiveTime) }.onFailure {
                     ctx.fireExceptionCaught("Failed to handle message received from: ${ctx.channel().remoteAddress()} (message: ${hexDump(message)})", it)
                 }
             }

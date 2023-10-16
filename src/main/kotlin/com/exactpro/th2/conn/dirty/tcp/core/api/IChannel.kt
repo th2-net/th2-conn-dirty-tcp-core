@@ -137,4 +137,11 @@ interface IChannel {
          */
         DIRECT(false, false)
     }
+
+    companion object {
+        /**
+         * Property with the timestamp when bytes were actually send/received to/from tcp channel.
+         */
+        const val OPERATION_TIMESTAMP_PROPERTY: String = "th2.operation_timestamp"
+    }
 }
