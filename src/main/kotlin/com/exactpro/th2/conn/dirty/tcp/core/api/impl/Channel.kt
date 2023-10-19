@@ -153,7 +153,7 @@ class Channel(
         metadata: MutableMap<String, String>,
         eventId: EventID?,
         mode: SendMode,
-    ): CompletableFuture<MessageID> = CompletableFuture<MessageID>().apply {
+    ): CompletableFuture<MessageID> = CompletableFuture<Pair<MessageID, Instant>>().apply {
         try {
             lock.lock()
             limiter.acquire()
@@ -170,8 +170,7 @@ class Channel(
             // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
             // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
             val data = Unpooled.copiedBuffer(buffer).asReadOnly()
-            val sendingTimestamp = Instant.now()
-            thenRunAsync({
+            thenAcceptAsync({ (messageId, sendingTimestamp) ->
                 runCatching {
                     logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
                     if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
@@ -186,7 +185,7 @@ class Channel(
             }, sendExecutor)
 
             channel.send(buffer.asReadOnly()).apply {
-                onSuccess { complete(messageId) }
+                onSuccess { complete(messageId to Instant.now()) }
                 onFailure {
                     logger.error(it) { "TcpChannel.send operation of '${messageId.toJson()}' message id failure" }
                     completeExceptionally(it)
@@ -199,7 +198,7 @@ class Channel(
         } finally {
             lock.unlock()
         }
-    }
+    }.thenApply { (messageId, _) -> messageId }
 
     override fun close(): CompletableFuture<Unit> {
         logger.debug { "Trying to disconnect from: $address (session: $sessionAlias)" }
