@@ -44,9 +44,9 @@ class MainHandler(
     }
 
     override fun decode(ctx: ChannelHandlerContext, buf: ByteBuf, out: MutableList<Any>) {
+        val receiveTime = Instant.now()
         logger.trace { "Attempting to decode data received from: ${ctx.channel().remoteAddress()} (data: ${hexDump(buf)})" }
 
-        val receiveTime = Instant.now()
         while (buf.isReadable) {
             val message = buf.readMessage(ctx) ?: break
 

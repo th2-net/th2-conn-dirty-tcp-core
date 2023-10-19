@@ -174,8 +174,8 @@ class Channel(
                 runCatching {
                     logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
                     if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
-                    val finalMetadata = metadata.add(IChannel.OPERATION_TIMESTAMP_PROPERTY, sendingTimestamp.toString())
-                    val resolvedMessageId = runCatching { onMessage.accept(data, messageId, finalMetadata, eventId) }
+                    metadata[IChannel.OPERATION_TIMESTAMP_PROPERTY] = sendingTimestamp.toString()
+                    val resolvedMessageId = runCatching { onMessage.accept(data, messageId, metadata, eventId) }
                         .onFailure { logger.error(it) { "Error while adding message into batcher" } }.getOrNull()
                     runCatching { if(resolvedMessageId != null && event != null) { storeEvent(event.messageID(resolvedMessageId), eventId ?: this@Channel.eventId) } }
                         .onFailure { logger.error(it) { "Error while publishing mangler event." } }
@@ -250,7 +250,7 @@ class Channel(
 
     override fun onMessage(message: ByteBuf, receiveTimestamp: Instant) {
         logger.trace { "Received message on '$sessionAlias' session: ${hexDump(message)}" }
-        val metadata = handler.onIncoming(this, message.asReadOnly())
+        val metadata: Map<String, String> = handler.onIncoming(this, message.asReadOnly())
         mangler.onIncoming(this, message.asReadOnly(), metadata)
 
         val messageCopy = Unpooled.copiedBuffer(message)
