@@ -44,6 +44,8 @@ import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import mu.KotlinLogging
 import org.jctools.queues.SpscUnboundedArrayQueue
 import java.net.InetSocketAddress
+import java.time.Instant
+import java.util.HashMap
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 import java.util.concurrent.ScheduledExecutorService
@@ -151,7 +153,7 @@ class Channel(
         metadata: MutableMap<String, String>,
         eventId: EventID?,
         mode: SendMode,
-    ): CompletableFuture<MessageID> = CompletableFuture<MessageID>().apply {
+    ): CompletableFuture<MessageID> = CompletableFuture<Pair<MessageID, Instant>>().apply {
         try {
             lock.lock()
             limiter.acquire()
@@ -168,10 +170,11 @@ class Channel(
             // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
             // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
             val data = Unpooled.copiedBuffer(buffer).asReadOnly()
-            thenRunAsync({
+            thenAcceptAsync({ (messageId, sendingTimestamp) ->
                 runCatching {
                     logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
                     if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
+                    metadata[IChannel.OPERATION_TIMESTAMP_PROPERTY] = sendingTimestamp.toString()
                     val resolvedMessageId = runCatching { onMessage.accept(data, messageId, metadata, eventId) }
                         .onFailure { logger.error(it) { "Error while adding message into batcher" } }.getOrNull()
                     runCatching { if(resolvedMessageId != null && event != null) { storeEvent(event.messageID(resolvedMessageId), eventId ?: this@Channel.eventId) } }
@@ -182,7 +185,7 @@ class Channel(
             }, sendExecutor)
 
             channel.send(buffer.asReadOnly()).apply {
-                onSuccess { complete(messageId) }
+                onSuccess { complete(messageId to Instant.now()) }
                 onFailure {
                     logger.error(it) { "TcpChannel.send operation of '${messageId.toJson()}' message id failure" }
                     completeExceptionally(it)
@@ -195,7 +198,7 @@ class Channel(
         } finally {
             lock.unlock()
         }
-    }
+    }.thenApply { (messageId, _) -> messageId }
 
     override fun close(): CompletableFuture<Unit> {
         logger.debug { "Trying to disconnect from: $address (session: $sessionAlias)" }
@@ -245,15 +248,18 @@ class Channel(
         return handler.onReceive(this, buffer)
     }
 
-    override fun onMessage(message: ByteBuf) {
+    override fun onMessage(message: ByteBuf, receiveTimestamp: Instant) {
         logger.trace { "Received message on '$sessionAlias' session: ${hexDump(message)}" }
-        val metadata = handler.onIncoming(this, message.asReadOnly())
+        val metadata: Map<String, String> = handler.onIncoming(this, message.asReadOnly())
         mangler.onIncoming(this, message.asReadOnly(), metadata)
 
         val messageCopy = Unpooled.copiedBuffer(message)
         message.release()
 
-        onMessage.accept(messageCopy, nextMessageId(bookName, sessionGroup, sessionAlias, FIRST), metadata, null)
+        // Add the timestamp in the end just in case
+        val finalMetadata = metadata.add(IChannel.OPERATION_TIMESTAMP_PROPERTY, receiveTimestamp.toString())
+
+        onMessage.accept(messageCopy, nextMessageId(bookName, sessionGroup, sessionAlias, FIRST), finalMetadata, null)
     }
 
     override fun onError(cause: Throwable): Unit = onError("Error on: $address (session: $sessionAlias)", cause)
@@ -280,6 +286,12 @@ class Channel(
     }
 
     private fun storeEvent(event: CommonEvent, parentEventId: EventID) = onEvent(event.toProto(parentEventId))
+
+    private fun <K, V> Map<K, V>.add(key: K, value: V): Map<K, V> =
+        (this as? MutableMap<K, V>
+            ?: HashMap(this)).also {
+            it[key] = value
+        }
 
     companion object {
         @Suppress("UNCHECKED_CAST")
