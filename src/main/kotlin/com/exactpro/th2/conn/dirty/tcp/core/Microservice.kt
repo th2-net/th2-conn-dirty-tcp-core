@@ -216,34 +216,25 @@ class Microservice(
 
     @Suppress("UNUSED_PARAMETER")
     private fun handleBatch(metadata: DeliveryMetadata, batch: MessageGroupBatch) {
-        batch.groupsList.forEach { group ->
-            group.runCatching(::handleGroup).recoverCatching { cause ->
-                onError("Failed to handle protobuf message group", group, cause)
+        when (batch.groupsCount) {
+            0 -> K_LOGGER.warn { "Received an empty protobuf batch" }
+            1 -> {
+                val group = batch.groupsList.single()
+                group.runCatching(::handleGroup).onFailure { cause ->
+                    onError("Failed to handle protobuf message group", group, cause)
+                }
             }
+            else -> handleMultipleMessages(batch)
         }
     }
 
     private fun handleGroup(group: MessageGroup) {
-        if (group.messagesCount != 1) {
-            onError("Protobuf message group must contain only a single message", group)
+        if (!validateGroup(group)) {
             return
         }
 
-        val message = group.messagesList[0]
-
-        if (!message.hasRawMessage()) {
-            onError("Protobuf message is not a raw message", message)
-            return
-        }
-
+        val message = group.messagesList.single()
         val rawMessage = message.rawMessage
-
-        rawMessage.eventId?.run {
-            if (bookName != rootEventId.bookName) {
-                onError("Unexpected book name: $bookName (expected: ${rootEventId.bookName})", message)
-                return
-            }
-        }
 
         val sessionAlias = rawMessage.sessionAlias
         val sessionGroup = rawMessage.sessionGroup.ifBlank { sessionAlias }
@@ -259,42 +250,85 @@ class Microservice(
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    private fun handleBatch(metadata: DeliveryMetadata, batch: GroupBatch) {
-        batch.groups.forEach { group ->
-            group.runCatching {
-                handleGroup(group, batch.book, batch.sessionGroup)
-            }.recoverCatching { cause ->
-                onError("Failed to handle transport message group", group, batch.book, batch.sessionGroup, cause)
+    private fun validateGroup(group: MessageGroup): Boolean {
+        if (group.messagesCount != 1) {
+            onError("Protobuf message group must contain only a single message", group)
+            return false
+        }
+
+        val message = group.messagesList[0]
+
+        if (!message.hasRawMessage()) {
+            onError("Protobuf message is not a raw message", message)
+            return false
+        }
+
+        val rawMessage = message.rawMessage
+
+        rawMessage.eventId?.run {
+            if (bookName != rootEventId.bookName) {
+                onError("Unexpected book name: $bookName (expected: ${rootEventId.bookName})", message)
+                return false
+            }
+        }
+        return true
+    }
+
+    private fun handleMultipleMessages(batch: MessageGroupBatch) {
+        var valid = true
+        for (group in batch.groupsList) {
+            val groupValid = validateGroup(group)
+            valid = valid and groupValid
+        }
+        if (!valid) {
+            return
+        }
+
+        val messagesByDestination: Map<SessionKey, List<AnyMessage>> =
+            batch.groupsList.asSequence()
+                .map { it.messagesList.single() }
+                .groupBy {
+                    it.rawMessage.run { sessionKey(sessionAlias, sessionGroup) }
+                }
+
+        for ((sessionKey, messagesToSend) in messagesByDestination) {
+            val (sessionAlias, sessionGroup) = sessionKey
+            val handler = channelFactory.getHandler(sessionGroup, sessionAlias)
+            if (handler == null) {
+                onError("Unknown session group or alias: $sessionGroup/$sessionAlias", messagesToSend)
+                continue
+            }
+
+            handler.sendAllProto(messagesToSend.map { it.rawMessage }).exceptionally {
+                onError("Failed to send protobuf message", messagesToSend, it)
+                emptyList()
             }
         }
     }
 
-    private fun handleGroup(group: TransportMessageGroup, book: String, sessionGroup: String) {
-        if (group.messages.size != 1) {
-            onError("Transport message group must contain only a single message", group, book, sessionGroup)
-            return
-        }
-
-        val message = group.messages[0]
-
-        if (message !is RawMessage) {
-            onError("Transport message is not a raw message", message, book, sessionGroup)
-            return
-        }
-
-        message.eventId?.run {
-            if (bookName != rootEventId.bookName) {
-                onError(
-                    "Unexpected book name: $bookName (expected: ${rootEventId.bookName})",
-                    message,
-                    book,
-                    sessionGroup
-                )
-                return
+    @Suppress("UNUSED_PARAMETER")
+    private fun handleBatch(metadata: DeliveryMetadata, batch: GroupBatch) {
+        when (batch.groups.size) {
+            0 -> K_LOGGER.warn { "Received an empty transport batch" }
+            1 -> {
+                val group = batch.groups.single()
+                group.runCatching {
+                    handleGroup(group, batch.book, batch.sessionGroup)
+                }.onFailure { cause ->
+                    onError("Failed to handle transport message group",
+                        group, batch.book, batch.sessionGroup, cause)
+                }
             }
+            else -> handleMultipleMessages(batch)
+        }
+    }
+
+    private fun handleGroup(group: TransportMessageGroup, book: String, sessionGroup: String) {
+        if (!validateGroup(group, book, sessionGroup)) {
+            return
         }
 
+        val message = group.messages.single().asRaw()
         val sessionAlias = message.id.sessionAlias
         val resolvedSessionGroup = sessionGroup.ifBlank { sessionAlias }
 
@@ -313,6 +347,82 @@ class Microservice(
             null
         }
     }
+
+    private fun validateGroup(group: TransportMessageGroup, book: String, sessionGroup: String): Boolean {
+        if (group.messages.size != 1) {
+            onError("Transport message group must contain only a single message", group, book, sessionGroup)
+            return false
+        }
+
+        val message = group.messages[0]
+
+        if (message !is RawMessage) {
+            onError("Transport message is not a raw message", message, book, sessionGroup)
+            return false
+        }
+
+        message.eventId?.run {
+            if (bookName != rootEventId.bookName) {
+                onError(
+                    "Unexpected book name: $bookName (expected: ${rootEventId.bookName})",
+                    message,
+                    book,
+                    sessionGroup
+                )
+                return false
+            }
+        }
+        return true
+    }
+
+    private fun handleMultipleMessages(batch: GroupBatch) {
+        val book = batch.book
+        val sessionGroup = batch.sessionGroup
+
+        var valid = true
+        for (group in batch.groups) {
+            val groupValid = validateGroup(group, book, sessionGroup)
+            valid = valid and groupValid
+        }
+        if (!valid) {
+            return
+        }
+
+        val messagesByDestination: Map<SessionKey, List<RawMessage>> =
+            batch.groups.asSequence()
+                .map { it.messages.single().asRaw() }
+                .groupBy {
+                    sessionKey(it.id.sessionAlias, sessionGroup)
+                }
+
+        for ((sessionKey, messagesToSend) in messagesByDestination) {
+            val (sessionAlias, group) = sessionKey
+            val handler = channelFactory.getHandler(group, sessionAlias)
+            if (handler == null) {
+                onError("Unknown session group or alias: $group/$sessionAlias",
+                    messagesToSend, book, sessionGroup)
+                continue
+            }
+
+            handler.sendAllTransport(messagesToSend).exceptionally {
+                onError("Failed to send transport message", messagesToSend, book, sessionGroup, it)
+                emptyList()
+            }
+        }
+    }
+
+    private data class SessionKey(
+        val alias: String,
+        val group: String,
+    )
+
+    private fun sessionKey(
+        alias: String,
+        group: String,
+    ) : SessionKey = SessionKey(
+        alias = alias,
+        group = group.ifBlank { alias },
+    )
 
     private fun initSession(session: SessionSettings) {
         val sessionGroup = session.sessionGroup
@@ -411,7 +521,11 @@ class Microservice(
 
 
     private fun onError(error: String, group: MessageGroup, cause: Throwable? = null) {
-        val messageIds = group.messagesList.groupBy(
+        onError(error, group.messagesList, cause)
+    }
+
+    private fun onError(error: String, messages: List<AnyMessage>, cause: Throwable? = null) {
+        val messageIds = messages.groupBy(
             { it.getErrorEventId() },
             { it.messageId }
         )
@@ -426,7 +540,23 @@ class Microservice(
         sessionGroup: String,
         cause: Throwable? = null
     ) {
-        val messageIds = group.messages.groupBy(
+        onError(
+            error,
+            group.messages,
+            book,
+            sessionGroup,
+            cause,
+        )
+    }
+
+    private fun onError(
+        error: String,
+        messages: List<Message<*>>,
+        book: String,
+        sessionGroup: String,
+        cause: Throwable? = null
+    ) {
+        val messageIds = messages.groupBy(
             { it.getErrorEventId() },
             { it.id.toProto(book, sessionGroup) }
         )
@@ -450,6 +580,11 @@ class Microservice(
 
     private fun Message<*>.getErrorEventId(): EventID {
         return eventId?.toProto() ?: sessionEventIds[id.sessionAlias] ?: errorEventId
+    }
+
+    private fun Message<*>.asRaw(): RawMessage {
+        require(this is RawMessage) { "message ${this::class} is not a raw message" }
+        return this
     }
 
     companion object {

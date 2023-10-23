@@ -153,52 +153,70 @@ class Channel(
         metadata: MutableMap<String, String>,
         eventId: EventID?,
         mode: SendMode,
-    ): CompletableFuture<MessageID> = CompletableFuture<Pair<MessageID, Instant>>().apply {
-        try {
-            lock.lock()
-            limiter.acquire()
+    ): CompletableFuture<MessageID> = sendWithLock<Pair<MessageID, Instant>> {
 
-            check(isOpen) { "Cannot send message. Not connected to: $address (session: $sessionAlias)" }
+        val result: ProcessingResult = processMessage(message, metadata, eventId, mode)
 
-            val buffer = message.asExpandable()
+        // Date from buffer should be copied for post-processing (mangler.postOutgoing and onMessage handling).
+        // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
+        val copiedResult = result.copyWithImmutableBuffer()
+        thenAcceptAsync({ (_, sendingTimestamp) ->
+            messagePostprocessing(copiedResult, mode, sendingTimestamp)
+        }, sendExecutor)
 
-            if (mode.handle) handler.onOutgoing(this@Channel, buffer, metadata)
+        channel.send(result.buffer.asReadOnly()).apply {
+            onSuccess { complete(result.messageID to Instant.now()) }
+            onFailure {
+                logger.error(it) { "TcpChannel.send operation of '${result.messageID.toJson()}' message id failure" }
+                completeExceptionally(it)
+            }
+            onCancel { cancel(true) }
+        }
+    }.thenApply { (messageId, _) -> messageId }
 
-            val event = if (mode.mangle) mangler.onOutgoing(this@Channel, buffer, metadata) else null
-            val messageId = nextMessageId(bookName, sessionGroup, sessionAlias, SECOND)
+    override fun sendAll(
+        envelopes: List<IChannel.Envelope>,
+        mode: SendMode,
+    ): CompletableFuture<List<MessageID>> {
+        require(envelopes.isNotEmpty()) { "cannot send empty messages list" }
+        if (envelopes.size == 1) {
+            // fast path for single send
+            return envelopes.single().run { send(message, metadata, eventId, mode).thenApply(::listOf) }
+        }
+        return sendWithLock<Pair<List<MessageID>, Instant>> {
+            val results = ArrayList<ProcessingResult>(envelopes.size)
 
-            // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
+            for ((index, envelope) in envelopes.withIndex()) {
+                val message = envelope.message
+                val metadata = envelope.metadata
+                val eventId = envelope.eventId
+
+                val result = processMessage(message, metadata, eventId, mode)
+                results[index] = result
+            }
+
+            // Date from buffer should be copied for post-processing (mangler.postOutgoing and onMessage handling).
             // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
-            val data = Unpooled.copiedBuffer(buffer).asReadOnly()
-            thenAcceptAsync({ (messageId, sendingTimestamp) ->
-                runCatching {
-                    logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
-                    if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
-                    metadata[IChannel.OPERATION_TIMESTAMP_PROPERTY] = sendingTimestamp.toString()
-                    val resolvedMessageId = runCatching { onMessage.accept(data, messageId, metadata, eventId) }
-                        .onFailure { logger.error(it) { "Error while adding message into batcher" } }.getOrNull()
-                    runCatching { if(resolvedMessageId != null && event != null) { storeEvent(event.messageID(resolvedMessageId), eventId ?: this@Channel.eventId) } }
-                        .onFailure { logger.error(it) { "Error while publishing mangler event." } }
-                }.onFailure {
-                    logger.error(it) { "Post process of '${messageId.toJson()}' message id failure" }
+            val copiedResults = results.map(ProcessingResult::copyWithImmutableBuffer)
+            thenAcceptAsync({ (_, sendingTimestamp) ->
+                for (result in copiedResults) {
+                    messagePostprocessing(result, mode, sendingTimestamp)
                 }
             }, sendExecutor)
 
-            channel.send(buffer.asReadOnly()).apply {
-                onSuccess { complete(messageId to Instant.now()) }
+            channel.send(Unpooled.wrappedBuffer(*results.map { it.buffer }.toTypedArray())).apply {
+                onSuccess { complete(results.map { it.messageID }  to Instant.now()) }
                 onFailure {
-                    logger.error(it) { "TcpChannel.send operation of '${messageId.toJson()}' message id failure" }
+                    logger.error(it) {
+                        val ids = results.joinToString { result -> result.messageID.toJson() }
+                        "TcpChannel.send operation of '$ids' message ids failure"
+                    }
                     completeExceptionally(it)
                 }
                 onCancel { cancel(true) }
             }
-        } catch (e: Exception) {
-            logger.error(e) { "Channel.send operation failure" }
-            completeExceptionally(e)
-        } finally {
-            lock.unlock()
-        }
-    }.thenApply { (messageId, _) -> messageId }
+        }.thenApply { (messageId, _) -> messageId }
+    }
 
     override fun close(): CompletableFuture<Unit> {
         logger.debug { "Trying to disconnect from: $address (session: $sessionAlias)" }
@@ -275,6 +293,71 @@ class Channel(
         }
     }
 
+    /**
+     * Takes the [lock] and acquire permit from [limiter] before executing [block].
+     * @throws IllegalStateException if this channel is not opened
+     */
+    private inline fun <T> sendWithLock(block: CompletableFuture<T>.() -> Unit): CompletableFuture<T> =
+        CompletableFuture<T>().apply {
+            try {
+                lock.lock()
+                limiter.acquire()
+
+                check(isOpen) { "Cannot send message. Not connected to: $address (session: $sessionAlias)" }
+
+                block()
+            } catch (e: Exception) {
+                logger.error(e) { "Channel.send to $address (session: $sessionAlias) operation failure" }
+                completeExceptionally(e)
+            } finally {
+                lock.unlock()
+            }
+        }
+
+    private fun messagePostprocessing(
+        result: ProcessingResult,
+        mode: SendMode,
+        sendingTimestamp: Instant,
+    ) {
+        val (data, messageId, metadata, event, eventId) = result
+        runCatching {
+            logger.trace { "Post process of '${messageId.toJson()}' message id: ${hexDump(data)}" }
+            if (mode.mangle) mangler.postOutgoing(this@Channel, data, metadata)
+            metadata[IChannel.OPERATION_TIMESTAMP_PROPERTY] = sendingTimestamp.toString()
+            event?.run { storeEvent(messageID(messageId), eventId ?: this@Channel.eventId) }
+            onMessage.accept(data, messageId, metadata, eventId)
+        }.onFailure {
+            logger.error(it) { "Post process of '${messageId.toJson()}' message id failure" }
+        }
+    }
+
+    private fun processMessage(
+        message: ByteBuf,
+        metadata: MutableMap<String, String>,
+        eventId: EventID?,
+        mode: SendMode,
+    ): ProcessingResult {
+        val buffer = message.asExpandable()
+
+        if (mode.handle) {
+            handler.onOutgoing(this@Channel, buffer, metadata)
+        }
+
+        val event = if (mode.mangle) {
+            mangler.onOutgoing(this@Channel, buffer, metadata)
+        } else {
+            null
+        }
+        val messageId = nextMessageId(bookName, sessionGroup, sessionAlias, SECOND)
+        return ProcessingResult(
+            buffer,
+            messageId,
+            metadata,
+            event,
+            eventId,
+        )
+    }
+
     private fun onInfo(message: String) {
         logger.info(message)
         storeEvent(message.toEvent(), eventId)
@@ -286,6 +369,16 @@ class Channel(
     }
 
     private fun storeEvent(event: CommonEvent, parentEventId: EventID) = onEvent(event.toProto(parentEventId))
+
+    private data class ProcessingResult(
+        val buffer: ByteBuf,
+        val messageID: MessageID,
+        val metadata: MutableMap<String, String>,
+        val event: CommonEvent?,
+        val eventId: EventID?,
+    ) {
+        fun copyWithImmutableBuffer(): ProcessingResult = copy(buffer = Unpooled.copiedBuffer(buffer).asReadOnly())
+    }
 
     private fun <K, V> Map<K, V>.add(key: K, value: V): Map<K, V> =
         (this as? MutableMap<K, V>
