@@ -263,6 +263,11 @@ spec:
 
 # Changelog
 
+## 3.3.0
+
+* Add `SendingTimeoutHandler` class that helps keep track of the failed sending attempts
+  and reports an event with number of the failed attempts.
+
 ## 3.2.2
 
 * Add `th2.operation_timestamp` property to a message.
