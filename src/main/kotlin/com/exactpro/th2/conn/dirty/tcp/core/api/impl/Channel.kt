@@ -250,11 +250,17 @@ class Channel(
 
     override fun onMessage(message: ByteBuf, receiveTimestamp: Instant) {
         logger.trace { "Received message on '$sessionAlias' session: ${hexDump(message)}" }
-        val metadata: Map<String, String> = handler.onIncoming(this, message.asReadOnly())
-        mangler.onIncoming(this, message.asReadOnly(), metadata)
+        val metadata: Map<String, String>
+        val messageCopy: ByteBuf
+        try {
+            metadata = handler.onIncoming(this, message.asReadOnly())
+            mangler.onIncoming(this, message.asReadOnly(), metadata)
 
-        val messageCopy = Unpooled.copiedBuffer(message)
-        message.release()
+            messageCopy = Unpooled.copiedBuffer(message)
+        } finally {
+            // release the buffer in any case to avoid leaking it
+            message.release()
+        }
 
         // Add the timestamp in the end just in case
         val finalMetadata = metadata.add(IChannel.OPERATION_TIMESTAMP_PROPERTY, receiveTimestamp.toString())

@@ -91,6 +91,8 @@ class TcpChannel(
             addLast("shaper", shaper)
             addLast("flusher", FlushConsolidationHandler(256, true))
             if (security.ssl) addLast("ssl", createSslHandler(address, security, ch.alloc()))
+            // The executor implementation that is passed here from Channel instance is actually a custom implementation
+            // It processes the runnable task and logs the error if any happened
             addLast("main", MainHandler(handler::onOpen, handler::onReceive, handler::onMessage, handler::onClose, executor::execute))
             addLast("exception", ExceptionHandler(handler::onError, executor::execute))
         }
