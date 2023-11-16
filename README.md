@@ -263,6 +263,16 @@ spec:
 
 # Changelog
 
+## 3.3.0
+
+* Add `SendingTimeoutHandler` class that helps keep track of the failed sending attempts
+  and reports an event with number of the failed attempts.
+
+## 3.2.2
+
+* Add `th2.operation_timestamp` property to a message.
+  It contains the send/receive operation timestamp in ISO format: `2023-10-16T09:21:12.178299Z`
+
 ## 3.2.1
 * Avoid messages loss in case of failures while saving mangler events.
 
