@@ -167,7 +167,7 @@ class Channel(
             if (mode.handle) handler.onOutgoing(this@Channel, buffer, metadata)
 
             val event = if (mode.mangle && buffer.isReadable) mangler.onOutgoing(this@Channel, buffer, metadata) else null
-            val messageId = if(mode.mstoreSend && buffer.isReadable) nextMessageId(bookName, sessionGroup, sessionAlias, SECOND) else MessageID.getDefaultInstance()
+            val messageId = if(mode.mstoreSend && buffer.isReadable) nextMessageId(bookName, sessionGroup, sessionAlias, SECOND) else null
 
             // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
             // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
@@ -188,7 +188,7 @@ class Channel(
 
             if(mode.socketSend && buffer.isReadable) {
                 channel.send(buffer.asReadOnly()).apply {
-                    onSuccess { complete(messageId to Instant.now()) }
+                    onSuccess { complete((messageId ?: MessageID.getDefaultInstance()) to Instant.now()) }
                     onFailure {
                         logger.error(it) { "TcpChannel.send operation of '${messageId?.toJson()}' message id failure" }
                         completeExceptionally(it)
@@ -196,7 +196,7 @@ class Channel(
                     onCancel { cancel(true) }
                 }
             } else {
-                complete(messageId to Instant.now())
+                complete((messageId ?: MessageID.getDefaultInstance()) to Instant.now())
             }
         } catch (e: Exception) {
             logger.error(e) { "Channel.send operation failure" }
@@ -265,7 +265,7 @@ class Channel(
         // Add the timestamp in the end just in case
         val finalMetadata = metadata.add(IChannel.OPERATION_TIMESTAMP_PROPERTY, receiveTimestamp.toString())
 
-        onMessage.accept(messageCopy, nextMessageId(bookName, sessionGroup, sessionAlias, FIRST), finalMetadata, null)
+        onMessage.accept(messageCopy, messageId, finalMetadata, null)
     }
 
     override fun onError(cause: Throwable): Unit = onError("Error on: $address (session: $sessionAlias)", cause)
