@@ -155,7 +155,7 @@ class Channel(
         metadata: MutableMap<String, String>,
         eventId: EventID?,
         mode: SendMode,
-    ): CompletableFuture<MessageID> = CompletableFuture<Pair<MessageID, Instant>>().apply {
+    ): CompletableFuture<MessageID> = CompletableFuture<Pair<MessageID?, Instant>>().apply {
         try {
             lock.lock()
             limiter.acquire()
@@ -188,7 +188,7 @@ class Channel(
 
             if(mode.socketSend && buffer.isReadable) {
                 channel.send(buffer.asReadOnly()).apply {
-                    onSuccess { complete((messageId ?: MessageID.getDefaultInstance()) to Instant.now()) }
+                    onSuccess { complete(messageId to Instant.now()) }
                     onFailure {
                         logger.error(it) { "TcpChannel.send operation of '${messageId?.toJson()}' message id failure" }
                         completeExceptionally(it)
@@ -196,7 +196,7 @@ class Channel(
                     onCancel { cancel(true) }
                 }
             } else {
-                complete((messageId ?: MessageID.getDefaultInstance()) to Instant.now())
+                complete(messageId to Instant.now())
             }
         } catch (e: Exception) {
             logger.error(e) { "Channel.send operation failure" }
