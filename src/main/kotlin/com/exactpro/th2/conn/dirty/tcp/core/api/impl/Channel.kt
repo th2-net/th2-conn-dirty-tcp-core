@@ -82,7 +82,7 @@ class Channel(
         Executor(executor.newPipe("io-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val sendExecutor =
         Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
-    private val limiter = RateLimiter(maxMessageRate)
+    private val limiter = com.google.common.util.concurrent.RateLimiter.create(maxMessageRate.toDouble())
     private val channel = TcpChannel(address, security, eventLoopGroup, ioExecutor, shaper, this)
     private val lock = ReentrantLock()
 
