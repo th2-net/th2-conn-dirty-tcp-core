@@ -41,6 +41,7 @@ import io.netty.buffer.Unpooled
 import io.netty.channel.EventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import java.net.InetSocketAddress
+import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
@@ -78,7 +79,7 @@ class Channel(
         Executor(executor.newPipe("io-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val sendExecutor =
         Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
-    private val limiter = com.google.common.util.concurrent.RateLimiter.create(maxMessageRate.toDouble()).also {
+    private val limiter = com.google.common.util.concurrent.RateLimiter.create(maxMessageRate.toDouble(), Duration.ofSeconds(1)).also {
         logger.info { "Created limiter with rate limit equal to ${maxMessageRate}." }
     }
     private val channel = TcpChannel(address, security, eventLoopGroup, ioExecutor, shaper, this)
