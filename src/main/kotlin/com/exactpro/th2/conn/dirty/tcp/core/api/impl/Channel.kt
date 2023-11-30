@@ -24,7 +24,6 @@ import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.common.message.toJson
 import com.exactpro.th2.conn.dirty.tcp.core.ChannelFactory.MessageAcceptor
 import com.exactpro.th2.conn.dirty.tcp.core.Pipe.Companion.newPipe
-import com.exactpro.th2.conn.dirty.tcp.core.RateLimiter
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode
@@ -36,24 +35,21 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.nextMessageId
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import com.exactpro.th2.netty.bytebuf.util.asExpandable
-import com.exactpro.th2.netty.bytebuf.util.isEmpty
-import com.exactpro.th2.netty.bytebuf.util.isNotEmpty
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.buffer.Unpooled
 import io.netty.channel.EventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
-import mu.KotlinLogging
-import org.jctools.queues.SpscUnboundedArrayQueue
 import java.net.InetSocketAddress
 import java.time.Instant
-import java.util.HashMap
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.Executor
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import mu.KotlinLogging
+import org.jctools.queues.SpscUnboundedArrayQueue
 import com.exactpro.th2.common.event.Event as CommonEvent
 import io.netty.util.concurrent.Future as NettyFuture
 
@@ -82,7 +78,9 @@ class Channel(
         Executor(executor.newPipe("io-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val sendExecutor =
         Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
-    private val limiter = com.google.common.util.concurrent.RateLimiter.create(maxMessageRate.toDouble())
+    private val limiter = com.google.common.util.concurrent.RateLimiter.create(maxMessageRate.toDouble()).also {
+        logger.info { "Created limiter with rate limit equal to ${maxMessageRate}." }
+    }
     private val channel = TcpChannel(address, security, eventLoopGroup, ioExecutor, shaper, this)
     private val lock = ReentrantLock()
 
@@ -158,7 +156,11 @@ class Channel(
     ): CompletableFuture<MessageID> = CompletableFuture<Pair<MessageID?, Instant>>().apply {
         try {
             lock.lock()
-            limiter.acquire()
+            limiter.acquire().also { waited_time ->
+                if(waited_time > 0) {
+                    logger.info { "Waited for ${waited_time} seconds." }
+                }
+            }
 
             check(isOpen) { "Cannot send message. Not connected to: $address (session: $sessionAlias)" }
 
