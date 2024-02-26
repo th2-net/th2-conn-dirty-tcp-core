@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.2.0)
+# th2-conn-dirty-tcp-core (3.4.0)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -29,12 +29,14 @@ the [link](https://exactpro.atlassian.net/wiki/spaces/TH2/pages/1048838145/TH2+T
 
 # Send mode
 
-Outgoing message can be handled differently depending on send mode. There are 4 following modes:
+Outgoing message can be handled differently depending on send mode. There are 6 following modes:
 
-* prepare and mangle
-* prepare
-* mangle
-* direct
+* HANDLE_AND_MANGLE (handle: true,  mangle: true,  socketSend: true,  mqPublish: true)
+* HANDLE            (handle: true,  mangle: false, socketSend: true,  mqPublish: true)
+* MANGLE            (handle: false, mangle: true,  socketSend: true,  mqPublish: true)
+* DIRECT            (handle: false, mangle: false, socketSend: true,  mqPublish: true)
+* DIRECT_SOCKET     (handle: false, mangle: false, socketSend: true,  mqPublish: false)
+* DIRECT_MQ         (handle: false, mangle: false, socketSend: false, mqPublish: true)
 
 # Configuration
 
@@ -262,6 +264,14 @@ spec:
 ```
 
 # Changelog
+
+## 3.4.0
+
+* Add `DIRECT_SOCKET`, `DIRECT_MQ` send modes.
+* Extended `IHandler`, `IHandlerContext`, `IMangler`, `IManglerContext` interfaces.
+  * Add feature to create custom single event and use it in handler / mangler as parent.
+  * Message id is passed into onIncoming method of handler / mangler.
+* Use guava `RateLimiter` implementation.
 
 ## 3.3.0
 

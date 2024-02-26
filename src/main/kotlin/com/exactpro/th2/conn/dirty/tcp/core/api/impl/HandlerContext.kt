@@ -17,6 +17,7 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api.impl
 
 import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.conn.dirty.tcp.core.ChannelFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
@@ -32,7 +33,7 @@ class HandlerContext(
     private val sessionAlias: String,
     private val channelFactory: ChannelFactory,
     private val getDictionary: (DictionaryType) -> InputStream,
-    private val sendEvent: (Event) -> Unit,
+    private val sendEvent: (Event, EventID?) -> EventID,
     private val getService: (Class<out Any>) -> Any
 ) : IHandlerContext {
     override fun createChannel(
@@ -56,7 +57,7 @@ class HandlerContext(
 
     override fun destroyChannel(channel: IChannel): Unit = channelFactory.destroyChannel(channel)
     override fun get(dictionary: DictionaryType): InputStream = getDictionary(dictionary)
-    override fun send(event: Event): Unit = sendEvent(event)
+    override fun send(event: Event, eventID: EventID?): EventID = sendEvent(event, eventID)
 
     @Suppress("UNCHECKED_CAST")
     override fun <T : Any> getGrpcService(serviceClass: Class<T>): T = getService(serviceClass) as T

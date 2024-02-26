@@ -17,6 +17,7 @@
 package com.exactpro.th2.conn.dirty.tcp.core
 
 import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.grpc.Event as GrpcEvent
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.EventBatch
@@ -326,7 +327,7 @@ class Microservice(
             eventRouter.storeEvent("Session: $sessionAlias".toEvent(), groupEventId)
         }
 
-        val sendEvent: (Event) -> Unit = { onEvent(it, sessionEventId) }
+        val sendEvent: (Event, EventID?) -> EventID = { event, eventId -> event.toProto(eventId ?: sessionEventId).also { onEvent(it) }.id }
 
         val handlerContext = HandlerContext(
             session.handler,
@@ -381,12 +382,12 @@ class Microservice(
         for ((eventId, messageIds) in eventMessages) {
             val event = "Sent ${messageIds.size} message(s)".toEvent()
             messageIds.forEach(event::messageID)
-            onEvent(event, eventId)
+            onEvent(event.toProto(eventId))
         }
     }
 
-    private fun onEvent(event: Event, parentId: EventID) {
-        eventBatcher.onEvent(event.toProto(parentId))
+    private fun onEvent(event: GrpcEvent) {
+        eventBatcher.onEvent(event)
     }
 
     private fun onError(error: String, message: AnyMessage, cause: Throwable? = null) {
@@ -406,7 +407,7 @@ class Microservice(
     private fun onError(error: String, cause: Throwable?, id: MessageID, parentEventId: EventID) {
         val event = error.toErrorEvent(cause).messageID(id)
         K_LOGGER.error("$error (message: ${id.logId})", cause)
-        onEvent(event, parentEventId)
+        onEvent(event.toProto(parentEventId))
     }
 
 
@@ -440,7 +441,7 @@ class Microservice(
         messageIds.forEach { (parentEventId, messageIds) ->
             val event = error.toErrorEvent(cause)
             messageIds.forEach(event::messageID)
-            onEvent(event, parentEventId)
+            onEvent(event.toProto(parentEventId))
         }
     }
 
