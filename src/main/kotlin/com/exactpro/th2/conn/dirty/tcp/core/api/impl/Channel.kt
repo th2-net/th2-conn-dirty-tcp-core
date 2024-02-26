@@ -35,6 +35,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.nextMessageId
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import com.exactpro.th2.netty.bytebuf.util.asExpandable
+import com.google.common.util.concurrent.RateLimiter
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.buffer.Unpooled
@@ -79,8 +80,8 @@ class Channel(
         Executor(executor.newPipe("io-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val sendExecutor =
         Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
-    private val limiter = com.google.common.util.concurrent.RateLimiter.create(maxMessageRate.toDouble(), Duration.ofSeconds(1)).also {
-        logger.info { "Created limiter with rate limit equal to ${maxMessageRate}/s." }
+    private val limiter = RateLimiter.create(maxMessageRate.toDouble(), Duration.ofSeconds(1)).also {
+        logger.info { "Created limiter with rate limit equal to $maxMessageRate msg/s." }
     }
     private val channel = TcpChannel(address, security, eventLoopGroup, ioExecutor, shaper, this)
     private val lock = ReentrantLock()

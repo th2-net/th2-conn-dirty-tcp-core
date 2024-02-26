@@ -267,8 +267,11 @@ spec:
 
 ## 3.4.0
 
-* Add `DIRECT_SOCKET`, `DIRECT_MQ` send modes
-* Extended `IHandler`, `IHandlerContext`, `IMangler`, `IManglerContext` interfaces
+* Add `DIRECT_SOCKET`, `DIRECT_MQ` send modes.
+* Extended `IHandler`, `IHandlerContext`, `IMangler`, `IManglerContext` interfaces.
+  * Add feature to create custom single event and use it in handler / mangler as parent.
+  * Message id is passed into onIncoming method of handler / mangler.
+* Use guava `RateLimiter` implementation.
 
 ## 3.3.0
 
