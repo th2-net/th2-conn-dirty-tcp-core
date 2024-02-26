@@ -117,7 +117,7 @@ interface IChannel {
         val acceptAllCerts: Boolean = false,
     )
 
-    enum class SendMode(val handle: Boolean, val mangle: Boolean, val socketSend: Boolean, val mstoreSend: Boolean) {
+    enum class SendMode(val handle: Boolean, val mangle: Boolean, val socketSend: Boolean, val mqPublish: Boolean) {
         /**
          * Message and its metadata will pass through [IHandler.onOutgoing] and [IMangler.onOutgoing] before send
          */
