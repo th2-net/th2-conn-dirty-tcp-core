@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.2.0)
+# th2-conn-dirty-tcp-core (3.4.0)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -29,12 +29,14 @@ the [link](https://exactpro.atlassian.net/wiki/spaces/TH2/pages/1048838145/TH2+T
 
 # Send mode
 
-Outgoing message can be handled differently depending on send mode. There are 4 following modes:
+Outgoing message can be handled differently depending on send mode. There are 6 following modes:
 
-* prepare and mangle
-* prepare
-* mangle
-* direct
+* HANDLE_AND_MANGLE (handle: true,  mangle: true,  socketSend: true,  mstoreSend: true)
+* HANDLE            (handle: true,  mangle: false, socketSend: true,  mstoreSend: true)
+* MANGLE            (handle: false, mangle: true,  socketSend: true,  mstoreSend: true)
+* DIRECT            (handle: false, mangle: false, socketSend: true,  mstoreSend: true)
+* DIRECT_SOCKET     (handle: false, mangle: false, socketSend: true,  mstoreSend: false)
+* DIRECT_MSTORE     (handle: false, mangle: false, socketSend: false, mstoreSend: true)
 
 # Configuration
 
@@ -262,6 +264,11 @@ spec:
 ```
 
 # Changelog
+
+## 3.4.0
+
+* Add `DIRECT_SOCKET`, `DIRECT_MSTORE` send modes
+* Extended `IHandler`, `IHandlerContext`, `IMangler`, `IManglerContext` interfaces
 
 ## 3.3.0
 

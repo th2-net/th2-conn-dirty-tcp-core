@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@ package com.exactpro.th2.conn.dirty.tcp.core.api
 import com.exactpro.th2.common.event.Event
 import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
-import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.EventId
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import java.io.InputStream
 import java.net.InetSocketAddress

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ import javax.annotation.concurrent.ThreadSafe
  * Mangles protocol messages on a set of [channels][IChannel] belonging to a single session
  */
 @ThreadSafe
+@JvmDefaultWithoutCompatibility
 interface IMangler : AutoCloseable {
     /**
      * This method is called after a corresponding [channel] has been opened (e.g. TCP connection is established).
@@ -41,7 +42,12 @@ interface IMangler : AutoCloseable {
      *
      * @return message metadata
      */
-    fun onIncoming(channel: IChannel, message: ByteBuf, metadata: Map<String, String>, messageID: MessageID): Unit = Unit
+    fun onIncoming(channel: IChannel, message: ByteBuf, metadata: Map<String, String>, messageID: MessageID): Unit = onIncoming(channel, message, metadata)
+    @Deprecated(
+        "This method is deprecated could you please migrate to onIncoming(IChannel, ByteBuf, Map<String, String>, MessageID)",
+        ReplaceWith("onIncoming(channel, message, metadata, messageId)")
+    )
+    fun onIncoming(channel: IChannel, message: ByteBuf, metadata: Map<String, String>): Unit = Unit
 
     /**
      * This method is called before sending [message] to a corresponding [channel] (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).

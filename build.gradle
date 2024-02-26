@@ -23,6 +23,7 @@ targetCompatibility = 11
 tasks.withType(KotlinCompile).configureEach {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_11)
+        freeCompilerArgs.add('-Xjvm-default=all-compatibility')
     }
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
  * Handles protocol messages and events, maintains session on a set of [channels][IChannel] belonging to a single session
  */
 @ThreadSafe
+@JvmDefaultWithoutCompatibility
 interface IHandler : AutoCloseable {
     /**
      * Sends provided protobuf [message]
@@ -85,7 +86,13 @@ interface IHandler : AutoCloseable {
      *
      * @return message metadata
      */
-    fun onIncoming(channel: IChannel, message: ByteBuf, messageId: MessageID): Map<String, String> = mapOf()
+    fun onIncoming(channel: IChannel, message: ByteBuf, messageId: MessageID): Map<String, String> = onIncoming(channel, message)
+
+    @Deprecated(
+        "This method is deprecated could you please migrate to onIncoming(IChannel, ByteBuf, MessageID)",
+         ReplaceWith("onIncoming(channel, message, messageId)")
+    )
+    fun onIncoming(channel: IChannel, message: ByteBuf): Map<String, String> = mapOf()
 
     /**
      * This method is called before sending [message] to a corresponding [channel] (whether it'll be called or not depends on [send-mode][IChannel.SendMode]).
