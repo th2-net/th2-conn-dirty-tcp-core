@@ -31,12 +31,12 @@ the [link](https://exactpro.atlassian.net/wiki/spaces/TH2/pages/1048838145/TH2+T
 
 Outgoing message can be handled differently depending on send mode. There are 6 following modes:
 
-* HANDLE_AND_MANGLE (handle: true,  mangle: true,  socketSend: true,  mstoreSend: true)
-* HANDLE            (handle: true,  mangle: false, socketSend: true,  mstoreSend: true)
-* MANGLE            (handle: false, mangle: true,  socketSend: true,  mstoreSend: true)
-* DIRECT            (handle: false, mangle: false, socketSend: true,  mstoreSend: true)
-* DIRECT_SOCKET     (handle: false, mangle: false, socketSend: true,  mstoreSend: false)
-* DIRECT_MSTORE     (handle: false, mangle: false, socketSend: false, mstoreSend: true)
+* HANDLE_AND_MANGLE (handle: true,  mangle: true,  socketSend: true,  mqPublish: true)
+* HANDLE            (handle: true,  mangle: false, socketSend: true,  mqPublish: true)
+* MANGLE            (handle: false, mangle: true,  socketSend: true,  mqPublish: true)
+* DIRECT            (handle: false, mangle: false, socketSend: true,  mqPublish: true)
+* DIRECT_SOCKET     (handle: false, mangle: false, socketSend: true,  mqPublish: false)
+* DIRECT_MQ         (handle: false, mangle: false, socketSend: false, mqPublish: true)
 
 # Configuration
 
@@ -267,7 +267,7 @@ spec:
 
 ## 3.4.0
 
-* Add `DIRECT_SOCKET`, `DIRECT_MSTORE` send modes
+* Add `DIRECT_SOCKET`, `DIRECT_MQ` send modes
 * Extended `IHandler`, `IHandlerContext`, `IMangler`, `IManglerContext` interfaces
 
 ## 3.3.0

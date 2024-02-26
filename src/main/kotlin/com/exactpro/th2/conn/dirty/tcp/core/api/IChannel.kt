@@ -121,29 +121,29 @@ interface IChannel {
         /**
          * Message and its metadata will pass through [IHandler.onOutgoing] and [IMangler.onOutgoing] before send
          */
-        HANDLE_AND_MANGLE(true, true, true, true),
+        HANDLE_AND_MANGLE(handle = true, mangle = true, socketSend = true, mqPublish = true),
 
         /**
          * Message and its metadata will only be passed to [IHandler.onOutgoing] before send
          */
-        HANDLE(true, false, true, true),
+        HANDLE(handle = true, mangle = false, socketSend = true, mqPublish = true),
 
         /**
          * Message and its metadata will only be passed to [IMangler.onOutgoing] before send
          */
-        MANGLE(false, true, true, true),
+        MANGLE(handle = false, mangle = true, socketSend = true, mqPublish = true),
         /**
          * Message will be sent directly to socket and will to mstore.
          */
-        DIRECT(false, false, true, true),
+        DIRECT(handle = false, mangle = false, socketSend = true, mqPublish = true),
         /**
          * Message will be sent directly to socket and will not be sent to mstore.
          */
-        DIRECT_SOCKET(false, false, true, false),
+        DIRECT_SOCKET(handle = false, mangle = false, socketSend = true, mqPublish = false),
         /**
          * Message will be sent to mstore and will not be sent to socket.
          */
-        DIRECT_MSTORE(false, false, false, true)
+        DIRECT_MQ(handle = false, mangle = false, socketSend = false, mqPublish = true)
     }
 
     companion object {

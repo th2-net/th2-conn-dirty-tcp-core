@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -80,7 +80,7 @@ class Channel(
     private val sendExecutor =
         Executor(executor.newPipe("send-executor-$sessionAlias", SpscUnboundedArrayQueue(65_536), Runnable::run)::send)
     private val limiter = com.google.common.util.concurrent.RateLimiter.create(maxMessageRate.toDouble(), Duration.ofSeconds(1)).also {
-        logger.info { "Created limiter with rate limit equal to ${maxMessageRate}." }
+        logger.info { "Created limiter with rate limit equal to ${maxMessageRate}/s." }
     }
     private val channel = TcpChannel(address, security, eventLoopGroup, ioExecutor, shaper, this)
     private val lock = ReentrantLock()
@@ -170,7 +170,7 @@ class Channel(
             if (mode.handle) handler.onOutgoing(this@Channel, buffer, metadata)
 
             val event = if (mode.mangle && buffer.isReadable) mangler.onOutgoing(this@Channel, buffer, metadata) else null
-            val messageId = if(mode.mstoreSend && buffer.isReadable) nextMessageId(bookName, sessionGroup, sessionAlias, SECOND) else null
+            val messageId = if(mode.mqPublish && buffer.isReadable) nextMessageId(bookName, sessionGroup, sessionAlias, SECOND) else null
 
             // Date from buffer should be copied for prost-processing (mangler.postOutgoing and onMessage handling).
             // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
