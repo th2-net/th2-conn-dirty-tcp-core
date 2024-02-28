@@ -66,8 +66,8 @@ class MessageBatcher(
             messages.offer(message)
 
             when (messages.size) {
+                maxBatchSize -> send()
                 1 -> future = executor.schedule(::send, maxFlushTime, MILLISECONDS)
-                maxBatchSize -> executor.execute(::send)
             }
         }
 
@@ -86,7 +86,7 @@ class MessageBatcher(
             val messageCount = messages.size
 
             when {
-                messageCount >= maxBatchSize -> send()
+                messageCount >= maxBatchSize -> executor.execute(::send)
                 messageCount > 0 -> future = executor.schedule(::send, maxFlushTime, MILLISECONDS)
             }
         }
