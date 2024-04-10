@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.4.0)
+# th2-conn-dirty-tcp-core (3.5.0)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -264,6 +264,12 @@ spec:
 ```
 
 # Changelog
+
+## 3.5.0
+* add recovering subscriptions of channels in the case of failure
+* updated bom: `4.6.1-dev`
+* updated common: `5.10.0-dev`
+* updated common-utils': `2.2.3-dev`
 
 ## 3.4.0
 
