@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.1.1)
+# th2-conn-dirty-tcp-core (3.5.1)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -29,12 +29,14 @@ the [link](https://exactpro.atlassian.net/wiki/spaces/TH2/pages/1048838145/TH2+T
 
 # Send mode
 
-Outgoing message can be handled differently depending on send mode. There are 4 following modes:
+Outgoing message can be handled differently depending on send mode. There are 6 following modes:
 
-* prepare and mangle
-* prepare
-* mangle
-* direct
+* HANDLE_AND_MANGLE (handle: true,  mangle: true,  socketSend: true,  mqPublish: true)
+* HANDLE            (handle: true,  mangle: false, socketSend: true,  mqPublish: true)
+* MANGLE            (handle: false, mangle: true,  socketSend: true,  mqPublish: true)
+* DIRECT            (handle: false, mangle: false, socketSend: true,  mqPublish: true)
+* DIRECT_SOCKET     (handle: false, mangle: false, socketSend: true,  mqPublish: false)
+* DIRECT_MQ         (handle: false, mangle: false, socketSend: false, mqPublish: true)
 
 # Configuration
 
@@ -264,8 +266,42 @@ spec:
 
 # Changelog
 
-## 3.1.1
+## 3.5.1
 * ability to override default book name. 
+
+## 3.5.0
+* add recovering subscriptions of channels in the case of failure
+* updated bom: `4.6.1-dev`
+* updated common: `5.10.0-dev`
+* updated common-utils': `2.2.3-dev`
+
+## 3.4.0
+
+* Add `DIRECT_SOCKET`, `DIRECT_MQ` send modes.
+* Extended `IHandler`, `IHandlerContext`, `IMangler`, `IManglerContext` interfaces.
+  * Add feature to create custom single event and use it in handler / mangler as parent.
+  * Message id is passed into onIncoming method of handler / mangler.
+* Use guava `RateLimiter` implementation.
+
+## 3.3.0
+
+* Add `SendingTimeoutHandler` class that helps keep track of the failed sending attempts
+  and reports an event with number of the failed attempts.
+
+## 3.2.2
+
+* Add `th2.operation_timestamp` property to a message.
+  It contains the send/receive operation timestamp in ISO format: `2023-10-16T09:21:12.178299Z`
+
+## 3.2.1
+* Avoid messages loss in case of failures while saving mangler events.
+
+## 3.2.0
+
+* updated bom: `4.5.0-dev`
+* updated common: `5.4.0-dev`
+* updated common-utils: `2.2.0-dev`
+* updated kotlin: `1.8.22`
 
 ## 3.1.0
 

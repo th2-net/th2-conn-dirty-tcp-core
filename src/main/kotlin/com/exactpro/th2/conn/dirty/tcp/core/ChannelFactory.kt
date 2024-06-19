@@ -115,7 +115,7 @@ class ChannelFactory(
     }
 
     fun interface MessageAcceptor {
-        fun accept(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?)
+        fun accept(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?): MessageID
     }
 
     private data class SessionContext(

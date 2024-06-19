@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,6 +27,7 @@ import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
  * Handles protocol messages and events, maintains session on a set of [channels][IChannel] belonging to a single session
  */
 @ThreadSafe
+@JvmDefaultWithoutCompatibility
 interface IHandler : AutoCloseable {
     /**
      * Sends provided protobuf [message]
@@ -81,9 +82,16 @@ interface IHandler : AutoCloseable {
      * It can be used to change state according to received message (e.g. set state to logged-in when a login response is received).
      *
      * @param message received message
+     * @param messageId messageId of the received message after it will be saved to mstore
      *
      * @return message metadata
      */
+    fun onIncoming(channel: IChannel, message: ByteBuf, messageId: MessageID): Map<String, String> = onIncoming(channel, message)
+
+    @Deprecated(
+        "This method is deprecated could you please migrate to onIncoming(IChannel, ByteBuf, MessageID)",
+         ReplaceWith("onIncoming(channel, message, messageId)")
+    )
     fun onIncoming(channel: IChannel, message: ByteBuf): Map<String, String> = mapOf()
 
     /**

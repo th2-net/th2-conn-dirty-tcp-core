@@ -17,6 +17,7 @@
 package com.exactpro.th2.conn.dirty.tcp.core
 
 import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.grpc.Event as GrpcEvent
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.EventBatch
@@ -28,6 +29,7 @@ import com.exactpro.th2.common.message.bookName
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
+import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.DeliveryMetadata
@@ -43,6 +45,7 @@ import com.exactpro.th2.common.utils.event.EventBatcher
 import com.exactpro.th2.common.utils.event.transport.toProto
 import com.exactpro.th2.common.utils.message.RAW_DIRECTION_SELECTOR
 import com.exactpro.th2.common.utils.message.RAW_GROUP_SELECTOR
+import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.sessionAlias
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.ALIAS_SELECTOR
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.GROUP_SELECTOR
@@ -147,9 +150,13 @@ class Microservice(
                 registerResource("transport-message-batcher-$book", ::close)
             }
 
-            fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) {
-                messageBatcher.onMessage(
-                    buff.toTransportRawMessageBuilder(messageId, metadata, eventId), messageId.connectionId.sessionGroup
+            fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?): MessageID {
+                val builder = buff.toTransportRawMessageBuilder(messageId, metadata, eventId)
+                messageBatcher.onMessage(builder, messageId.connectionId.sessionGroup)
+                // message ID is updated by messageBatcher (the timestamp is set)
+                return builder.idBuilder().build().toProto(
+                    book = messageId.bookName,
+                    sessionGroup = messageId.connectionId.sessionGroup,
                 )
             }
         } else {
@@ -165,8 +172,11 @@ class Microservice(
                 registerResource("proto-message-batcher-$book", ::close)
             }
 
-            fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?) {
-                messageBatcher.onMessage(buff.toProtoRawMessageBuilder(messageId, metadata, eventId))
+            fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?): MessageID {
+                val builder = buff.toProtoRawMessageBuilder(messageId, metadata, eventId)
+                messageBatcher.onMessage(builder)
+                // message ID is updated by messageBatcher (the timestamp is set)
+                return builder.id
             }
         }
 
@@ -339,7 +349,7 @@ class Microservice(
             eventRouter.storeEvent("Session: $sessionAlias".toEvent(), groupEventId)
         }
 
-        val sendEvent: (Event) -> Unit = { onEvent(it, sessionEventId) }
+        val sendEvent: (Event, EventID?) -> EventID = { event, eventId -> event.toProto(eventId ?: sessionEventId).also { onEvent(it) }.id }
 
         val handlerContext = HandlerContext(
             session.handler,
@@ -394,12 +404,12 @@ class Microservice(
         for ((eventId, messageIds) in eventMessages) {
             val event = "Sent ${messageIds.size} message(s)".toEvent()
             messageIds.forEach(event::messageID)
-            onEvent(event, eventId)
+            onEvent(event.toProto(eventId))
         }
     }
 
-    private fun onEvent(event: Event, parentId: EventID) {
-        eventBatcher.onEvent(event.toProto(parentId))
+    private fun onEvent(event: GrpcEvent) {
+        eventBatcher.onEvent(event)
     }
 
     private fun onError(error: String, message: AnyMessage, cause: Throwable? = null) {
@@ -419,7 +429,7 @@ class Microservice(
     private fun onError(error: String, cause: Throwable?, id: MessageID, parentEventId: EventID) {
         val event = error.toErrorEvent(cause).messageID(id)
         K_LOGGER.error("$error (message: ${id.logId})", cause)
-        onEvent(event, parentEventId)
+        onEvent(event.toProto(parentEventId))
     }
 
 
@@ -453,7 +463,7 @@ class Microservice(
         messageIds.forEach { (parentEventId, messageIds) ->
             val event = error.toErrorEvent(cause)
             messageIds.forEach(event::messageID)
-            onEvent(event, parentEventId)
+            onEvent(event.toProto(parentEventId))
         }
     }
 
