@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package com.exactpro.th2.conn.dirty.tcp.core
 
 import com.exactpro.th2.common.event.Event
-import com.exactpro.th2.common.grpc.Event as GrpcEvent
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.EventBatch
@@ -29,7 +28,6 @@ import com.exactpro.th2.common.message.bookName
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
-import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.DeliveryMetadata
@@ -46,7 +44,6 @@ import com.exactpro.th2.common.utils.event.transport.toProto
 import com.exactpro.th2.common.utils.message.RAW_DIRECTION_SELECTOR
 import com.exactpro.th2.common.utils.message.RAW_GROUP_SELECTOR
 import com.exactpro.th2.common.utils.message.id
-import com.exactpro.th2.common.utils.message.sessionAlias
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.ALIAS_SELECTOR
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.GROUP_SELECTOR
 import com.exactpro.th2.common.utils.message.transport.toProto
@@ -65,17 +62,17 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toProtoRawMessageBuilder
 import com.exactpro.th2.conn.dirty.tcp.core.util.toTransportRawMessageBuilder
-import com.fasterxml.jackson.core.JsonProcessingException
 import io.netty.buffer.ByteBuf
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
-import java.io.IOException
 import mu.KotlinLogging
+import java.io.IOException
 import java.io.InputStream
 import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
+import com.exactpro.th2.common.grpc.Event as GrpcEvent
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageGroup as TransportMessageGroup
 import com.exactpro.th2.common.utils.message.RawMessageBatcher as ProtoMessageBatcher
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher as TransportMessageBatcher
@@ -341,12 +338,12 @@ class Microservice(
         val book = session.bookName ?: defaultBook
         val rootEventID = bookContexts[book]?.rootEventID ?: error("Not found root event id for book: $book")
 
-        val groupEventId = groupEventIds.getOrPut(sessionGroup) {
-            eventRouter.storeEvent("Group: $sessionGroup".toEvent(), rootEventID)
+        val groupEventId = groupEventIds.computeIfAbsent(sessionGroup) { group ->
+            eventRouter.storeEvent("Group: $group".toEvent(), rootEventID)
         }
 
-        val sessionEventId = sessionEventIds.getOrPut(sessionAlias) {
-            eventRouter.storeEvent("Session: $sessionAlias".toEvent(), groupEventId)
+        val sessionEventId = sessionEventIds.computeIfAbsent(sessionAlias) { alias ->
+            eventRouter.storeEvent("Session: $alias".toEvent(), groupEventId)
         }
 
         val sendEvent: (Event, EventID?) -> EventID = { event, eventId -> event.toProto(eventId ?: sessionEventId).also { onEvent(it) }.id }
@@ -371,7 +368,7 @@ class Microservice(
         registerResource("handler-$sessionAlias", handler::close)
         registerResource("mangler-$sessionAlias", mangler::close)
 
-        handlers.getOrPut(sessionGroup, ::ConcurrentHashMap)[sessionAlias] = handler
+        handlers.computeIfAbsent(sessionGroup) { ConcurrentHashMap() }[sessionAlias] = handler
     }
 
     private fun publishSentEvents(batch: MessageGroupBatch) {
@@ -382,7 +379,7 @@ class Microservice(
                 val message = group.messagesList[0].rawMessage
                 val eventId = message.eventId ?: continue
                 if (message.direction != SECOND) continue
-                getOrPut(eventId, ::ArrayList) += message.metadata.id
+                computeIfAbsent(eventId) { mutableListOf() } += message.metadata.id
             }
         })
     }
@@ -395,7 +392,7 @@ class Microservice(
                 val message = group.messages[0]
                 val eventId = message.eventId ?: continue
                 if (message.id.direction != OUTGOING) continue
-                getOrPut(eventId.toProto(), ::ArrayList) += message.id.toProto(batch.book, batch.sessionGroup)
+                computeIfAbsent(eventId.toProto()) { mutableListOf() } += message.id.toProto(batch.book, batch.sessionGroup)
             }
         })
     }
@@ -476,10 +473,10 @@ class Microservice(
     }
 
     private fun errorEventIdByBook(book: String): EventID {
-        return errorEventIdsByBook.getOrPut(book) {
+        return errorEventIdsByBook.computeIfAbsent(book) {
             eventRouter.storeEvent(
                 "Errors".toErrorEvent(),
-                bookContexts[book]?.rootEventID ?: error("Not found root event id for book: ${book}")
+                bookContexts[it]?.rootEventID ?: error("Not found root event id for book: $it")
             )
         }
     }
@@ -496,23 +493,23 @@ class Microservice(
             boxName: String,
             eventRouter: MessageRouter<EventBatch>
         ): EventID {
-            try {
-                val customBookRoot = Event
-                    .start()
+            val customBookRoot = try {
+                 Event.start()
                     .endTimestamp()
                     .name("$boxName with non-default book ${bookName}: ${Instant.now()}")
                     .description("Root event")
                     .status(Event.Status.PASSED)
                     .toProto(bookName, boxName)
-                try {
-                    eventRouter.sendAll(EventBatch.newBuilder().apply { addEvents(customBookRoot) }.build())
-                } catch (e: IOException) {
-                    throw IllegalStateException("Can not send root event with custom book.", e);
-                }
-                return customBookRoot.id
-            } catch (e: JsonProcessingException) {
+            } catch (e: IOException) {
                 throw IllegalStateException("Can not create root event with custom book.", e)
             }
+            try {
+                eventRouter.sendAll(EventBatch.newBuilder().apply { addEvents(customBookRoot) }.build())
+            } catch (e: IOException) {
+                throw IllegalStateException("Can not send root event with custom book.", e)
+            }
+            return customBookRoot.id
+
         }
     }
 }
