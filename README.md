@@ -270,6 +270,7 @@ spec:
 ## 3.6.0
 * provided ability to override component book name for session.
 * migrated to th2 gradle plugin `0.0.8`
+* fixed the problem: conn checks batch book name instead of parent event book name during transport message handling
 * updated:
   * common: `5.13.1-dev`
   * kotlin-logging: `3.0.5`

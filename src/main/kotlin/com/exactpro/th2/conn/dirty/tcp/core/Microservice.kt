@@ -240,7 +240,6 @@ class Microservice(
             }
         }
     }
-
     private fun handleGroup(group: MessageGroup) {
         if (group.messagesCount != 1) {
             onError("Protobuf message group must contain only a single message", group)
@@ -256,9 +255,9 @@ class Microservice(
 
         val rawMessage = message.rawMessage
 
-        rawMessage.eventId?.run {
-            if (!bookNames.contains(bookName)) {
-                onHandleError("Unexpected book name: $bookName (expected one of: ${bookNames})", message)
+        rawMessage.eventId?.also { eventId ->
+            if (!bookNames.contains(eventId.bookName)) {
+                onHandleError("Unexpected book name: ${eventId.bookName} (expected one of: ${bookNames})", message)
                 return
             }
         }
@@ -289,25 +288,25 @@ class Microservice(
         }
     }
 
-    private fun handleGroup(group: TransportMessageGroup, book: String, sessionGroup: String) {
+    private fun handleGroup(group: TransportMessageGroup, batchBook: String, sessionGroup: String) {
         if (group.messages.size != 1) {
-            onError("Transport message group must contain only a single message", group, book, sessionGroup)
+            onError("Transport message group must contain only a single message", group, batchBook, sessionGroup)
             return
         }
 
         val message = group.messages[0]
 
         if (message !is RawMessage) {
-            onHandleError("Transport message is not a raw message", message, book, sessionGroup)
+            onHandleError("Transport message is not a raw message", message, batchBook, sessionGroup)
             return
         }
 
-        message.eventId?.run {
-            if(!bookNames.contains(book)) {
+        message.eventId?.also { eventId ->
+            if(!bookNames.contains(eventId.book)) {
                 onHandleError(
-                    "Unexpected book name: ${this.book} (expected one of the following: $bookNames)",
+                    "Unexpected book name: ${eventId.book} (expected one of the following: $bookNames)",
                     message,
-                    book,
+                    batchBook,
                     sessionGroup
                 )
                 return
@@ -317,18 +316,18 @@ class Microservice(
         val sessionAlias = message.id.sessionAlias
         val resolvedSessionGroup = sessionGroup.ifBlank { sessionAlias }
 
-        val handler = channelFactory.getHandler(book, resolvedSessionGroup, sessionAlias) ?: run {
+        val handler = channelFactory.getHandler(batchBook, resolvedSessionGroup, sessionAlias) ?: run {
             onHandleError(
                 "Unknown session group or alias: $resolvedSessionGroup/$sessionAlias",
                 message,
-                book,
+                batchBook,
                 resolvedSessionGroup
             )
             return
         }
 
         handler.send(message).exceptionally {
-            onHandleError("Failed to send transport message", message, book, resolvedSessionGroup, it)
+            onHandleError("Failed to send transport message", message, batchBook, resolvedSessionGroup, it)
             null
         }
     }
