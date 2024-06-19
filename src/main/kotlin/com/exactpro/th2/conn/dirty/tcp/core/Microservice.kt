@@ -267,7 +267,7 @@ class Microservice(
         val book = rawMessage.bookName
 
         val handler = channelFactory.getHandler(book, sessionGroup, sessionAlias) ?: run {
-            onHandleError("Unknown session group or alias: $sessionGroup/$sessionAlias", message)
+            onHandleError("Unknown session book or group or alias: $book/$sessionGroup/$sessionAlias", message)
             return
         }
 
@@ -318,7 +318,7 @@ class Microservice(
 
         val handler = channelFactory.getHandler(batchBook, resolvedSessionGroup, sessionAlias) ?: run {
             onHandleError(
-                "Unknown session group or alias: $resolvedSessionGroup/$sessionAlias",
+                "Unknown session book or group or alias: $batchBook/$resolvedSessionGroup/$sessionAlias",
                 message,
                 batchBook,
                 resolvedSessionGroup
