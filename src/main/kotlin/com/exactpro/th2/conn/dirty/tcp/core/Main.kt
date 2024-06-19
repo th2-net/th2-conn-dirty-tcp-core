@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,26 +18,18 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core
 
-import com.exactpro.th2.common.event.Event
-import com.exactpro.th2.common.grpc.EventBatch
-import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.schema.factory.CommonFactory
-import com.exactpro.th2.common.schema.message.MessageRouter
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerSettings
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerSettings
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.mangler.BasicManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.load
-import com.exactpro.th2.conn.dirty.tcp.core.util.storeEvent
-import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinFeature.NullIsSameAsDefault
 import com.fasterxml.jackson.module.kotlin.KotlinModule.Builder
-import java.io.IOException
-import java.time.Instant
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.locks.ReentrantLock
@@ -92,7 +84,7 @@ fun main(args: Array<String>) = try {
     val transportMessageRouter = factory.transportGroupBatchRouter
 
     val boxName = factory.boxConfiguration.boxName
-    require(boxName != null && boxName.isNotBlank()) { "Box name can't be blank." }
+    require(boxName.isNotBlank()) { "Box name can't be blank." }
     val defaultBook = factory.boxConfiguration.bookName
     require(defaultBook.isNotBlank()) { "Default book name can't be blank." }
 

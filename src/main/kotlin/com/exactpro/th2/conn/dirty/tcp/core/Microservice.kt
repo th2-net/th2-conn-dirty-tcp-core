@@ -489,17 +489,17 @@ class Microservice(
         private const val TRANSPORT_QUEUE_ATTRIBUTE = "transport-group"
 
         fun createRootEventID(
-            bookName: String,
-            boxName: String,
+            book: String,
+            scope: String,
             eventRouter: MessageRouter<EventBatch>
         ): EventID {
             val customBookRoot = try {
                  Event.start()
                     .endTimestamp()
-                    .name("$boxName with non-default book ${bookName}: ${Instant.now()}")
+                    .name("$scope with non-default book ${book}: ${Instant.now()}")
                     .description("Root event")
                     .status(Event.Status.PASSED)
-                    .toProto(bookName, boxName)
+                    .toProto(book, scope)
             } catch (e: IOException) {
                 throw IllegalStateException("Can not create root event with custom book.", e)
             }
