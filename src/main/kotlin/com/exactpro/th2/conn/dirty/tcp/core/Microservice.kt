@@ -72,6 +72,7 @@ import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
+import com.exactpro.th2.common.event.bean.Message as BodyMessage
 import com.exactpro.th2.common.grpc.Event as GrpcEvent
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageGroup as TransportMessageGroup
 import com.exactpro.th2.common.utils.message.RawMessageBatcher as ProtoMessageBatcher
@@ -249,7 +250,7 @@ class Microservice(
         val message = group.messagesList[0]
 
         if (!message.hasRawMessage()) {
-            onError("Protobuf message is not a raw message", message)
+            onHandleError("Protobuf message is not a raw message", message)
             return
         }
 
@@ -257,7 +258,7 @@ class Microservice(
 
         rawMessage.eventId?.run {
             if (!bookNames.contains(bookName)) {
-                onError("Unexpected book name: $bookName (expected one of: ${bookNames})", message)
+                onHandleError("Unexpected book name: $bookName (expected one of: ${bookNames})", message)
                 return
             }
         }
@@ -267,12 +268,12 @@ class Microservice(
         val book = rawMessage.bookName
 
         val handler = channelFactory.getHandler(book, sessionGroup, sessionAlias) ?: run {
-            onError("Unknown session group or alias: $sessionGroup/$sessionAlias", message)
+            onHandleError("Unknown session group or alias: $sessionGroup/$sessionAlias", message)
             return
         }
 
         handler.send(rawMessage).exceptionally {
-            onError("Failed to send protobuf message", message, it)
+            onHandleError("Failed to send protobuf message", message, it)
             null
         }
     }
@@ -297,13 +298,13 @@ class Microservice(
         val message = group.messages[0]
 
         if (message !is RawMessage) {
-            onError("Transport message is not a raw message", message, book, sessionGroup)
+            onHandleError("Transport message is not a raw message", message, book, sessionGroup)
             return
         }
 
         message.eventId?.run {
             if(!bookNames.contains(book)) {
-                onError(
+                onHandleError(
                     "Unexpected book name: ${this.book} (expected one of the following: $bookNames)",
                     message,
                     book,
@@ -317,7 +318,7 @@ class Microservice(
         val resolvedSessionGroup = sessionGroup.ifBlank { sessionAlias }
 
         val handler = channelFactory.getHandler(book, resolvedSessionGroup, sessionAlias) ?: run {
-            onError(
+            onHandleError(
                 "Unknown session group or alias: $resolvedSessionGroup/$sessionAlias",
                 message,
                 book,
@@ -327,7 +328,7 @@ class Microservice(
         }
 
         handler.send(message).exceptionally {
-            onError("Failed to send transport message", message, book, resolvedSessionGroup, it)
+            onHandleError("Failed to send transport message", message, book, resolvedSessionGroup, it)
             null
         }
     }
@@ -409,22 +410,25 @@ class Microservice(
         eventBatcher.onEvent(event)
     }
 
-    private fun onError(error: String, message: AnyMessage, cause: Throwable? = null) {
-        onError(error, cause, message.messageId, message.getErrorEventId())
+    private fun onHandleError(error: String, message: AnyMessage, cause: Throwable? = null) {
+        onHandleError(error, cause, message.messageId, message.getErrorEventId())
     }
 
-    private fun onError(
+    private fun onHandleError(
         error: String,
         message: Message<*>,
         book: String,
         sessionGroup: String,
         cause: Throwable? = null
     ) {
-        onError(error, cause, message.id.toProto(book, sessionGroup), message.getErrorEventId(book))
+        onHandleError(error, cause, message.id.toProto(book, sessionGroup), message.getErrorEventId(book))
     }
 
-    private fun onError(error: String, cause: Throwable?, id: MessageID, parentEventId: EventID) {
-        val event = error.toErrorEvent(cause).messageID(id)
+    private fun onHandleError(error: String, cause: Throwable?, id: MessageID, parentEventId: EventID) {
+        // Message id isn't attached to event because the message will not be stored into cradle.
+        // Also, origin message id can be invalid according to MessageUtils.isValid check
+        val event = error.toErrorEvent(cause)
+            .bodyData(BodyMessage().apply { data = "Origin message Id: ${id.logId}" })
         K_LOGGER.error("$error (message: ${id.logId})", cause)
         onEvent(event.toProto(parentEventId))
     }
@@ -497,6 +501,7 @@ class Microservice(
                  Event.start()
                     .endTimestamp()
                     .name("$scope with non-default book ${book}: ${Instant.now()}")
+                    .type("RootEvent")
                     .description("Root event")
                     .status(Event.Status.PASSED)
                     .toProto(book, scope)

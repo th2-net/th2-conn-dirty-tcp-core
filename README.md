@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.5.1)
+# th2-conn-dirty-tcp-core (3.6.0)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -56,7 +56,8 @@ Outgoing message can be handled differently depending on send mode. There are 6 
 
 + *sessionGroup* - session group for incoming/outgoing th2 messages (equal to session alias by default)
 + *sessionAlias* - session alias for incoming/outgoing th2 messages
-+ *bookName* - optional bookName which will be used for events/messages instead of default one. Default: `null`
++ *bookName* - optional bookName which will be used for events/messages instead of default one. 
+  Component book name is used if the option is missed
 + *handler* - handler settings
 + *mangler* - mangler settings (`null` by default)
 
@@ -267,7 +268,7 @@ spec:
 # Changelog
 
 ## 3.6.0
-* ability to override default book name.
+* provided ability to override component book name for session.
 * migrated to th2 gradle plugin `0.0.8`
 * updated:
   * common: `5.13.1-dev`
