@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 plugins {
     id "com.exactpro.th2.gradle.publish" version "0.0.8"
     id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
+    id 'maven-publish'
 }
 
 group = 'com.exactpro.th2'
