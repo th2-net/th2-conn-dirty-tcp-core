@@ -17,6 +17,7 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api.impl
 
 import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerContext
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerSettings
@@ -25,8 +26,8 @@ import java.io.InputStream
 class ManglerContext(
     override val settings: IManglerSettings,
     private val getDictionary: (DictionaryType) -> InputStream,
-    private val sendEvent: (Event) -> Unit,
+    private val sendEvent: (Event, EventID?) -> EventID,
 ) : IManglerContext {
     override fun get(dictionary: DictionaryType): InputStream = getDictionary(dictionary)
-    override fun send(event: Event): Unit = sendEvent(event)
+    override fun send(event: Event, eventID: EventID?): EventID = sendEvent(event, eventID)
 }

@@ -1,28 +1,20 @@
-plugins {
-    id 'maven-publish'
-    id 'signing'
-    id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
-    id "io.github.gradle-nexus.publish-plugin" version '1.1.0'
-}
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-ext {
-    sharedDir = file("${project.rootDir}/shared")
+plugins {
+    id "com.exactpro.th2.gradle.publish" version "0.0.8"
+    id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
+    id 'maven-publish'
 }
 
 group = 'com.exactpro.th2'
 version = release_version
 
-sourceCompatibility = 11
-targetCompatibility = 11
-
-compileKotlin.kotlinOptions {
-    jvmTarget = '11'
-    freeCompilerArgs += '-XXLanguage:+UnitConversion'
+kotlin {
+    jvmToolchain(11)
 }
 
-compileTestKotlin.kotlinOptions {
-    jvmTarget = '11'
-    freeCompilerArgs += '-XXLanguage:+UnitConversion'
+tasks.withType(KotlinCompile).configureEach {
+    kotlinOptions.freeCompilerArgs += '-Xjvm-default=all-compatibility'
 }
 
 repositories {
@@ -38,152 +30,40 @@ repositories {
 
     mavenLocal()
 
-    configurations.all {
+    configurations.configureEach {
         resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
         resolutionStrategy.cacheDynamicVersionsFor 0, 'seconds'
     }
 }
 
-jar {
-    manifest {
-        attributes(
-                'Created-By': "${System.getProperty('java.version')} (${System.getProperty('java.vendor')})",
-                'Specification-Title': '',
-                'Specification-Vendor': 'Exactpro Systems LLC',
-                'Implementation-Title': project.archivesBaseName,
-                'Implementation-Vendor': 'Exactpro Systems LLC',
-                'Implementation-Vendor-Id': 'com.exactpro',
-                'Implementation-Version': project.version
-        )
-    }
-}
-
-java {
-    withJavadocJar()
-    withSourcesJar()
-}
-
-// conditionals for publications
-tasks.withType(PublishToMavenRepository) {
-    onlyIf {
-        (repository == publishing.repositories.nexusRepository &&
-                project.hasProperty('nexus_user') &&
-                project.hasProperty('nexus_password') &&
-                project.hasProperty('nexus_url')) ||
-                (repository == publishing.repositories.sonatype &&
-                        project.hasProperty('sonatypeUsername') &&
-                        project.hasProperty('sonatypePassword')) ||
-                (repository == publishing.repositories.localRepo)
-    }
-}
-
-tasks.withType(Sign) {
-    onlyIf {
-        project.hasProperty('signingKey') && project.hasProperty('signingPassword')
-    }
-}
-
-// disable running task 'initializeSonatypeStagingRepository' on a gitlab
-tasks.whenTaskAdded { task ->
-    if (task.name == 'initializeSonatypeStagingRepository' &&
-            !(project.hasProperty('sonatypeUsername') && project.hasProperty('sonatypePassword'))
-    ) {
-        task.enabled = false
-    }
-}
-
-publishing {
-    publications {
-        mavenJava(MavenPublication) {
-            from components.java
-
-            pom {
-                name = rootProject.name
-                packaging = 'jar'
-                description = rootProject.description
-                url = vcs_url
-
-                scm {
-                    url = vcs_url
-                }
-
-                licenses {
-                    license {
-                        name = 'The Apache License, Version 2.0'
-                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-                    }
-                }
-
-                developers {
-                    developer {
-                        id = 'developer'
-                        name = 'developer'
-                        email = 'developer@exactpro.com'
-                    }
-                }
-            }
-        }
-    }
-
-    repositories {
-        maven {
-            name = 'localRepo'
-            url = sharedDir
-        }
-
-        //Nexus repo to publish from gitlab
-        maven {
-            name = 'nexusRepository'
-            url = project.findProperty('nexus_url')
-
-            credentials {
-                username = project.findProperty('nexus_user')
-                password = project.findProperty('nexus_password')
-            }
-        }
-    }
-}
-
-nexusPublishing {
-    repositories {
-        sonatype {
-            nexusUrl.set(uri('https://s01.oss.sonatype.org/service/local/'))
-            snapshotRepositoryUrl.set(uri('https://s01.oss.sonatype.org/content/repositories/snapshots/'))
-        }
-    }
-}
-
-signing {
-    def signingKey = findProperty("signingKey")
-    def signingPassword = findProperty("signingPassword")
-    useInMemoryPgpKeys(signingKey, signingPassword)
-    sign publishing.publications.mavenJava
-}
-
-clean {
-    delete sharedDir
-}
-
 dependencies {
-    api platform('com.exactpro.th2:bom:4.1.0')
-
-    implementation group: 'com.exactpro.th2', name: 'common', version: '3.44.0'
-    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '0.0.3'
+    implementation('com.exactpro.th2:common:5.13.1-dev') {
+        exclude group: 'com.exactpro.th2', module: 'cradle-core'
+        exclude group: 'com.exactpro.th2', module: 'cradle-cassandra'
+    }
+    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.2.3-dev'
     implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
 
     implementation 'org.slf4j:slf4j-api'
 
-    implementation group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
+    implementation "org.apache.commons:commons-lang3"
+
+//    implementation group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
     implementation group: 'org.jetbrains.kotlin', name: 'kotlin-reflect', version: kotlin_version
 
     implementation group: 'com.fasterxml.jackson.datatype', name: 'jackson-datatype-jsr310'
-    implementation group: 'com.fasterxml.jackson.module', name: 'jackson-module-kotlin', version: '2.11.2'
-    implementation group: 'io.github.microutils', name: 'kotlin-logging', version: '1.7.9'
-    implementation group: 'io.netty', name: 'netty-all', version: '4.1.86.Final'
-    implementation group: 'org.jctools', name: 'jctools-core', version: '3.3.0'
+    implementation group: 'com.fasterxml.jackson.module', name: 'jackson-module-kotlin'
+    implementation group: 'io.github.microutils', name: 'kotlin-logging', version: '3.0.5'
+    implementation group: 'io.netty', name: 'netty-all'
+    implementation group: 'org.jctools', name: 'jctools-core', version: '4.0.5'
 
     testImplementation group: 'org.jetbrains.kotlin', name: 'kotlin-test-junit5', version: kotlin_version
 }
-dependencyLocking {    
-    lockAllConfigurations()
+
+test {
+    useJUnitPlatform()
+}
+
+dependencyCheck {
+    suppressionFile = file('suppressions.xml')
 }

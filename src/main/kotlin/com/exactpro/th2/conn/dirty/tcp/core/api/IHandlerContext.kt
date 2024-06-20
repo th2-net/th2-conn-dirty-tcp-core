@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import java.io.InputStream
@@ -32,6 +33,11 @@ interface IHandlerContext {
      * Returns settings of a [handler][IHandler]
      */
     val settings: IHandlerSettings
+
+    /**
+     * Returns book name for this service
+     */
+    val bookName: String
 
     /**
      * Creates channel for specified [address] with specified [security], [attributes] and [sessionSuffixes]
@@ -64,8 +70,10 @@ interface IHandlerContext {
      * Sends an [event]
      *
      * @param event event to send
+     * @param rootEventId optional rootEventId different from session rootEventId
      */
-    fun send(event: Event)
+    fun send(event: Event, rootEventId: EventID? = null): EventID
+    fun send(event: Event) = send(event, null)
 
     /**
      * Returns instance of class to interact with grpc service.

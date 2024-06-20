@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,27 +17,38 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.grpc.MessageID
-import com.exactpro.th2.common.grpc.RawMessage
+import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.RawMessage
 import io.netty.buffer.ByteBuf
 import java.util.concurrent.CompletableFuture
 import javax.annotation.concurrent.ThreadSafe
+import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
 
 /**
  * Handles protocol messages and events, maintains session on a set of [channels][IChannel] belonging to a single session
  */
 @ThreadSafe
+@JvmDefaultWithoutCompatibility
 interface IHandler : AutoCloseable {
     /**
-     * Sends provided [message]
+     * Sends provided protobuf [message]
      */
-    fun send(message: RawMessage): CompletableFuture<MessageID>
+    fun send(message: ProtoRawMessage): CompletableFuture<MessageID> {
+        throw UnsupportedOperationException("Protobuf protocol isn't supported to send message")
+    }
+
+    /**
+     * Sends provided transport [message]
+     */
+    fun send(message: RawMessage): CompletableFuture<MessageID> {
+        throw UnsupportedOperationException("th2 transport protocol isn't supported to send message")
+    }
 
     /**
      * This method is called when service is started.
      *
      * For example, it can be used to create main session channel
      */
-    fun onStart(): Unit
+    fun onStart()
 
     /**
      * This method is called after a corresponding [channel] has been opened (e.g. TCP connection is established).
@@ -71,9 +82,16 @@ interface IHandler : AutoCloseable {
      * It can be used to change state according to received message (e.g. set state to logged-in when a login response is received).
      *
      * @param message received message
+     * @param messageId messageId of the received message after it will be saved to mstore
      *
      * @return message metadata
      */
+    fun onIncoming(channel: IChannel, message: ByteBuf, messageId: MessageID): Map<String, String> = onIncoming(channel, message)
+
+    @Deprecated(
+        "This method is deprecated could you please migrate to onIncoming(IChannel, ByteBuf, MessageID)",
+         ReplaceWith("onIncoming(channel, message, messageId)")
+    )
     fun onIncoming(channel: IChannel, message: ByteBuf): Map<String, String> = mapOf()
 
     /**

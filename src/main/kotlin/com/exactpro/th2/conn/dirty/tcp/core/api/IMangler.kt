@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
 import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.common.grpc.MessageID
 import io.netty.buffer.ByteBuf
 import javax.annotation.concurrent.ThreadSafe
 
@@ -24,6 +25,7 @@ import javax.annotation.concurrent.ThreadSafe
  * Mangles protocol messages on a set of [channels][IChannel] belonging to a single session
  */
 @ThreadSafe
+@JvmDefaultWithoutCompatibility
 interface IMangler : AutoCloseable {
     /**
      * This method is called after a corresponding [channel] has been opened (e.g. TCP connection is established).
@@ -36,9 +38,15 @@ interface IMangler : AutoCloseable {
      * It can be used to change mangling algorithm after a certain message was received
      *
      * @param message received message
+     * @param messageID messageId of the received message after it will be saved to mstore
      *
      * @return message metadata
      */
+    fun onIncoming(channel: IChannel, message: ByteBuf, metadata: Map<String, String>, messageID: MessageID): Unit = onIncoming(channel, message, metadata)
+    @Deprecated(
+        "This method is deprecated could you please migrate to onIncoming(IChannel, ByteBuf, Map<String, String>, MessageID)",
+        ReplaceWith("onIncoming(channel, message, metadata, messageId)")
+    )
     fun onIncoming(channel: IChannel, message: ByteBuf, metadata: Map<String, String>): Unit = Unit
 
     /**

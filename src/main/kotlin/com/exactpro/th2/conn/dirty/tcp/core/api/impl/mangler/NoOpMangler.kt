@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2022-2023 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,20 +14,13 @@
  * limitations under the License.
  */
 
-package com.exactpro.th2.conn.dirty.tcp.core.netty
+package com.exactpro.th2.conn.dirty.tcp.core.api.impl.mangler
 
+import com.exactpro.th2.common.event.Event
+import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
+import com.exactpro.th2.conn.dirty.tcp.core.api.IMangler
 import io.netty.buffer.ByteBuf
-import java.time.Instant
 
-interface ITcpChannelHandler {
-    fun onOpen()
-    fun onReceive(buffer: ByteBuf): ByteBuf?
-
-    /**
-     * Will be invoked on the [message] read from the channel using [onReceive] method.
-     * The [receiveTimestamp] will contain the timestamp when the bytes were received by channel.
-     */
-    fun onMessage(message: ByteBuf, receiveTimestamp: Instant)
-    fun onError(cause: Throwable)
-    fun onClose()
+object NoOpMangler : IMangler {
+    override fun onOutgoing(channel: IChannel, message: ByteBuf, metadata: MutableMap<String, String>): Event? = null
 }

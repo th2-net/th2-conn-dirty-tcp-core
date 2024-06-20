@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,14 +23,12 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerSettings
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerSettings
-import com.exactpro.th2.conn.dirty.tcp.core.api.impl.DummyManglerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.impl.mangler.BasicManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.load
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import com.fasterxml.jackson.module.kotlin.KotlinFeature
 import com.fasterxml.jackson.module.kotlin.KotlinFeature.NullIsSameAsDefault
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule.Builder
 import mu.KotlinLogging
 import java.util.concurrent.ConcurrentLinkedDeque
@@ -63,8 +61,8 @@ fun main(args: Array<String>) = try {
 
     val handlerFactory = load<IHandlerFactory>()
     val manglerFactory = load<IManglerFactory?>() ?: run {
-        LOGGER.warn { "No mangler was found. Using a dummy one" }
-        DummyManglerFactory
+        LOGGER.warn { "No mangler was found. Using a default one" }
+        BasicManglerFactory
     }
 
     LOGGER.info { "Loaded protocol handler factory: ${handlerFactory.name}" }
@@ -82,14 +80,22 @@ fun main(args: Array<String>) = try {
 
     val settings = factory.getCustomConfiguration(Settings::class.java, mapper)
     val eventRouter = factory.eventBatchRouter
-    val messageRouter = factory.messageRouterMessageGroupBatch
+    val protoMessageRouter = factory.messageRouterMessageGroupBatch
+    val transportMessageRouter = factory.transportGroupBatchRouter
+
+    val boxName = factory.boxConfiguration.boxName
+    require(boxName.isNotBlank()) { "Box name can't be blank." }
+    val defaultBook = factory.boxConfiguration.bookName
+    require(defaultBook.isNotBlank()) { "Default book name can't be blank." }
 
     Microservice(
-        factory.rootEventId,
+        defaultBook,
+        boxName,
         settings,
         factory::readDictionary,
         eventRouter,
-        messageRouter,
+        protoMessageRouter,
+        transportMessageRouter,
         handlerFactory,
         manglerFactory,
         factory.grpcRouter
@@ -114,10 +120,12 @@ fun main(args: Array<String>) = try {
 data class SessionSettings(
     val sessionAlias: String,
     val sessionGroup: String = sessionAlias,
+    val bookName: String? = null,
     val handler: IHandlerSettings,
     val mangler: IManglerSettings? = null,
 ) {
     init {
+        bookName?.run { require(isNotBlank()) { "Custom book name shouldn't be blank." } }
         require(sessionAlias.isNotBlank()) { "'${::sessionAlias.name}' is blank" }
         require(sessionGroup.isNotBlank()) { "'${::sessionGroup.name}' is blank" }
     }
@@ -129,11 +137,14 @@ data class Settings(
     val appThreads: Int = sessions.size * 2,
     val maxBatchSize: Int = 1000,
     val maxFlushTime: Long = 1000,
-    val batchByGroup: Boolean = false,
+    //FIXME: would be better to remove this option because cradle group concept doesn't support publishing one group from several sources
+    // and router for transport protocol doesn't support batch split
+    val batchByGroup: Boolean = true,
     val publishSentEvents: Boolean = true,
     val publishConnectEvents: Boolean = true,
     val sendLimit: Long = 0,
     val receiveLimit: Long = 0,
+    val useTransport: Boolean = false,
 ) {
     init {
         require(sessions.isNotEmpty()) { "'${::sessions.name}' is empty" }
