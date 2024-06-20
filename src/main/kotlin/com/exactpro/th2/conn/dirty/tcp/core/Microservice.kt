@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,7 +17,6 @@
 package com.exactpro.th2.conn.dirty.tcp.core
 
 import com.exactpro.th2.common.event.Event
-import com.exactpro.th2.common.grpc.Event as GrpcEvent
 import com.exactpro.th2.common.grpc.AnyMessage
 import com.exactpro.th2.common.grpc.Direction.SECOND
 import com.exactpro.th2.common.grpc.EventBatch
@@ -25,10 +24,10 @@ import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageGroup
 import com.exactpro.th2.common.grpc.MessageGroupBatch
 import com.exactpro.th2.common.grpc.MessageID
+import com.exactpro.th2.common.message.bookName
 import com.exactpro.th2.common.message.direction
 import com.exactpro.th2.common.message.sessionAlias
 import com.exactpro.th2.common.message.sessionGroup
-import com.exactpro.th2.common.message.toTimestamp
 import com.exactpro.th2.common.schema.dictionary.DictionaryType
 import com.exactpro.th2.common.schema.grpc.router.GrpcRouter
 import com.exactpro.th2.common.schema.message.DeliveryMetadata
@@ -67,16 +66,21 @@ import io.netty.buffer.ByteBuf
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
 import mu.KotlinLogging
+import java.io.IOException
 import java.io.InputStream
+import java.time.Instant
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit.SECONDS
+import com.exactpro.th2.common.event.bean.Message as BodyMessage
+import com.exactpro.th2.common.grpc.Event as GrpcEvent
 import com.exactpro.th2.common.schema.message.impl.rabbitmq.transport.MessageGroup as TransportMessageGroup
 import com.exactpro.th2.common.utils.message.RawMessageBatcher as ProtoMessageBatcher
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher as TransportMessageBatcher
 
 class Microservice(
-    private val rootEventId: EventID,
+    private val defaultBook: String,
+    private val boxName: String,
     private val settings: Settings,
     private val readDictionary: (DictionaryType) -> InputStream,
     private val eventRouter: MessageRouter<EventBatch>,
@@ -87,10 +91,11 @@ class Microservice(
     private val grpcRouter: GrpcRouter,
     private val registerResource: (name: String, destructor: () -> Unit) -> Unit,
 ) {
-    private val errorEventId by lazy { eventRouter.storeEvent("Errors".toErrorEvent(), rootEventId) }
+    private val errorEventIdsByBook = ConcurrentHashMap<String, EventID>()
     private val groupEventIds = ConcurrentHashMap<String, EventID>()
     private val sessionEventIds = ConcurrentHashMap<String, EventID>()
-    private val bookName: String = rootEventId.bookName
+    private val bookContexts: Map<String, BookContext>
+    private val bookNames: Set<String>
 
     private val executor = Executors.newScheduledThreadPool(settings.appThreads + settings.ioThreads).apply {
         registerResource("executor") {
@@ -128,18 +133,19 @@ class Microservice(
     private val channelFactory: ChannelFactory
 
     init {
-        val messageAcceptor = if (settings.useTransport) {
+
+        fun getMessageAcceptor(book: String) = if (settings.useTransport) {
             val messageBatcher = TransportMessageBatcher(
                 settings.maxBatchSize,
                 settings.maxFlushTime,
-                bookName,
+                book,
                 if (settings.batchByGroup) GROUP_SELECTOR else ALIAS_SELECTOR,
                 executor
             ) { batch ->
                 transportMessageRouter.send(batch)
                 publishSentEvents(batch)
             }.apply {
-                registerResource("transport-message-batcher", ::close)
+                registerResource("transport-message-batcher-$book", ::close)
             }
 
             fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?): MessageID {
@@ -161,7 +167,7 @@ class Microservice(
                 protoMessageRouter.send(batch, QueueAttribute.RAW.value)
                 publishSentEvents(batch)
             }.apply {
-                registerResource("proto-message-batcher", ::close)
+                registerResource("proto-message-batcher-$book", ::close)
             }
 
             fun(buff: ByteBuf, messageId: MessageID, metadata: Map<String, String>, eventId: EventID?): MessageID {
@@ -172,15 +178,26 @@ class Microservice(
             }
         }
 
+        bookContexts = settings.sessions
+            .asSequence()
+            .map { it.bookName ?: defaultBook }
+            .distinct()
+            .associateWith {
+                BookContext(it, getMessageAcceptor(it), createRootEventID(it, boxName, eventRouter))
+            }
+
+        bookNames = bookContexts.keys
+
         channelFactory = ChannelFactory(
             executor,
             eventLoopGroup,
             shaper,
             eventBatcher::onEvent,
-            messageAcceptor,
             eventRouter::storeEvent,
             settings.publishConnectEvents
-        )
+        ) { book ->
+            bookContexts[book]?.acceptor ?: error("Not found acceptor for book: $book")
+        }
 
         settings.sessions.forEach(::initSession)
     }
@@ -223,7 +240,6 @@ class Microservice(
             }
         }
     }
-
     private fun handleGroup(group: MessageGroup) {
         if (group.messagesCount != 1) {
             onError("Protobuf message group must contain only a single message", group)
@@ -233,29 +249,30 @@ class Microservice(
         val message = group.messagesList[0]
 
         if (!message.hasRawMessage()) {
-            onError("Protobuf message is not a raw message", message)
+            onHandleError("Protobuf message is not a raw message", message)
             return
         }
 
         val rawMessage = message.rawMessage
 
-        rawMessage.eventId?.run {
-            if (bookName != rootEventId.bookName) {
-                onError("Unexpected book name: $bookName (expected: ${rootEventId.bookName})", message)
+        rawMessage.eventId?.also { eventId ->
+            if (!bookNames.contains(eventId.bookName)) {
+                onHandleError("Unexpected book name: ${eventId.bookName} (expected one of: ${bookNames})", message)
                 return
             }
         }
 
         val sessionAlias = rawMessage.sessionAlias
         val sessionGroup = rawMessage.sessionGroup.ifBlank { sessionAlias }
+        val book = rawMessage.bookName
 
-        val handler = channelFactory.getHandler(sessionGroup, sessionAlias) ?: run {
-            onError("Unknown session group or alias: $sessionGroup/$sessionAlias", message)
+        val handler = channelFactory.getHandler(book, sessionGroup, sessionAlias) ?: run {
+            onHandleError("Unknown session book or group or alias: $book/$sessionGroup/$sessionAlias", message)
             return
         }
 
         handler.send(rawMessage).exceptionally {
-            onError("Failed to send protobuf message", message, it)
+            onHandleError("Failed to send protobuf message", message, it)
             null
         }
     }
@@ -271,25 +288,25 @@ class Microservice(
         }
     }
 
-    private fun handleGroup(group: TransportMessageGroup, book: String, sessionGroup: String) {
+    private fun handleGroup(group: TransportMessageGroup, batchBook: String, sessionGroup: String) {
         if (group.messages.size != 1) {
-            onError("Transport message group must contain only a single message", group, book, sessionGroup)
+            onError("Transport message group must contain only a single message", group, batchBook, sessionGroup)
             return
         }
 
         val message = group.messages[0]
 
         if (message !is RawMessage) {
-            onError("Transport message is not a raw message", message, book, sessionGroup)
+            onHandleError("Transport message is not a raw message", message, batchBook, sessionGroup)
             return
         }
 
-        message.eventId?.run {
-            if (bookName != rootEventId.bookName) {
-                onError(
-                    "Unexpected book name: $bookName (expected: ${rootEventId.bookName})",
+        message.eventId?.also { eventId ->
+            if(!bookNames.contains(eventId.book)) {
+                onHandleError(
+                    "Unexpected book name: ${eventId.book} (expected one of the following: $bookNames)",
                     message,
-                    book,
+                    batchBook,
                     sessionGroup
                 )
                 return
@@ -299,18 +316,18 @@ class Microservice(
         val sessionAlias = message.id.sessionAlias
         val resolvedSessionGroup = sessionGroup.ifBlank { sessionAlias }
 
-        val handler = channelFactory.getHandler(resolvedSessionGroup, sessionAlias) ?: run {
-            onError(
-                "Unknown session group or alias: $resolvedSessionGroup/$sessionAlias",
+        val handler = channelFactory.getHandler(batchBook, resolvedSessionGroup, sessionAlias) ?: run {
+            onHandleError(
+                "Unknown session book or group or alias: $batchBook/$resolvedSessionGroup/$sessionAlias",
                 message,
-                book,
+                batchBook,
                 resolvedSessionGroup
             )
             return
         }
 
         handler.send(message).exceptionally {
-            onError("Failed to send transport message", message, book, resolvedSessionGroup, it)
+            onHandleError("Failed to send transport message", message, batchBook, resolvedSessionGroup, it)
             null
         }
     }
@@ -318,20 +335,22 @@ class Microservice(
     private fun initSession(session: SessionSettings) {
         val sessionGroup = session.sessionGroup
         val sessionAlias = session.sessionAlias
+        val book = session.bookName ?: defaultBook
+        val rootEventID = bookContexts[book]?.rootEventID ?: error("Not found root event id for book: $book")
 
-        val groupEventId = groupEventIds.getOrPut(sessionGroup) {
-            eventRouter.storeEvent("Group: $sessionGroup".toEvent(), rootEventId)
+        val groupEventId = groupEventIds.computeIfAbsent(sessionGroup) { group ->
+            eventRouter.storeEvent("Group: $group".toEvent(), rootEventID)
         }
 
-        val sessionEventId = sessionEventIds.getOrPut(sessionAlias) {
-            eventRouter.storeEvent("Session: $sessionAlias".toEvent(), groupEventId)
+        val sessionEventId = sessionEventIds.computeIfAbsent(sessionAlias) { alias ->
+            eventRouter.storeEvent("Session: $alias".toEvent(), groupEventId)
         }
 
         val sendEvent: (Event, EventID?) -> EventID = { event, eventId -> event.toProto(eventId ?: sessionEventId).also { onEvent(it) }.id }
 
         val handlerContext = HandlerContext(
             session.handler,
-            bookName,
+            book,
             sessionAlias,
             channelFactory,
             readDictionary,
@@ -344,12 +363,12 @@ class Microservice(
             else -> manglerFactory.create(ManglerContext(settings, readDictionary, sendEvent))
         }
 
-        channelFactory.registerSession(sessionGroup, sessionAlias, handler, mangler, sessionEventId)
+        channelFactory.registerSession(sessionGroup, sessionAlias, book, handler, mangler, sessionEventId)
 
         registerResource("handler-$sessionAlias", handler::close)
         registerResource("mangler-$sessionAlias", mangler::close)
 
-        handlers.getOrPut(sessionGroup, ::ConcurrentHashMap)[sessionAlias] = handler
+        handlers.computeIfAbsent(sessionGroup) { ConcurrentHashMap() }[sessionAlias] = handler
     }
 
     private fun publishSentEvents(batch: MessageGroupBatch) {
@@ -360,7 +379,7 @@ class Microservice(
                 val message = group.messagesList[0].rawMessage
                 val eventId = message.eventId ?: continue
                 if (message.direction != SECOND) continue
-                getOrPut(eventId, ::ArrayList) += message.metadata.id
+                computeIfAbsent(eventId) { mutableListOf() } += message.metadata.id
             }
         })
     }
@@ -373,7 +392,7 @@ class Microservice(
                 val message = group.messages[0]
                 val eventId = message.eventId ?: continue
                 if (message.id.direction != OUTGOING) continue
-                getOrPut(eventId.toProto(), ::ArrayList) += message.id.toProto(batch.book, batch.sessionGroup)
+                computeIfAbsent(eventId.toProto()) { mutableListOf() } += message.id.toProto(batch.book, batch.sessionGroup)
             }
         })
     }
@@ -390,22 +409,25 @@ class Microservice(
         eventBatcher.onEvent(event)
     }
 
-    private fun onError(error: String, message: AnyMessage, cause: Throwable? = null) {
-        onError(error, cause, message.messageId, message.getErrorEventId())
+    private fun onHandleError(error: String, message: AnyMessage, cause: Throwable? = null) {
+        onHandleError(error, cause, message.messageId, message.getErrorEventId())
     }
 
-    private fun onError(
+    private fun onHandleError(
         error: String,
         message: Message<*>,
         book: String,
         sessionGroup: String,
         cause: Throwable? = null
     ) {
-        onError(error, cause, message.id.toProto(book, sessionGroup), message.getErrorEventId())
+        onHandleError(error, cause, message.id.toProto(book, sessionGroup), message.getErrorEventId(book))
     }
 
-    private fun onError(error: String, cause: Throwable?, id: MessageID, parentEventId: EventID) {
-        val event = error.toErrorEvent(cause).messageID(id)
+    private fun onHandleError(error: String, cause: Throwable?, id: MessageID, parentEventId: EventID) {
+        // Message id isn't attached to event because the message will not be stored into cradle.
+        // Also, origin message id can be invalid according to MessageUtils.isValid check
+        val event = error.toErrorEvent(cause)
+            .bodyData(BodyMessage().apply { data = "Origin message Id: ${id.logId}" })
         K_LOGGER.error("$error (message: ${id.logId})", cause)
         onEvent(event.toProto(parentEventId))
     }
@@ -428,7 +450,7 @@ class Microservice(
         cause: Throwable? = null
     ) {
         val messageIds = group.messages.groupBy(
-            { it.getErrorEventId() },
+            { it.getErrorEventId(book) },
             { it.id.toProto(book, sessionGroup) }
         )
 
@@ -446,11 +468,20 @@ class Microservice(
     }
 
     private fun AnyMessage.getErrorEventId(): EventID {
-        return eventId ?: sessionEventIds[sessionAlias] ?: errorEventId
+        return eventId ?: sessionEventIds[sessionAlias] ?: errorEventIdByBook(bookName)
     }
 
-    private fun Message<*>.getErrorEventId(): EventID {
-        return eventId?.toProto() ?: sessionEventIds[id.sessionAlias] ?: errorEventId
+    private fun Message<*>.getErrorEventId(book: String): EventID {
+        return eventId?.toProto() ?: sessionEventIds[id.sessionAlias] ?: errorEventIdByBook(book)
+    }
+
+    private fun errorEventIdByBook(book: String): EventID {
+        return errorEventIdsByBook.computeIfAbsent(book) {
+            eventRouter.storeEvent(
+                "Errors".toErrorEvent(),
+                bookContexts[it]?.rootEventID ?: error("Not found root event id for book: $it")
+            )
+        }
     }
 
     companion object {
@@ -459,5 +490,30 @@ class Microservice(
         private const val INPUT_QUEUE_ATTRIBUTE = "send"
         private const val RAW_QUEUE_ATTRIBUTE = "raw"
         private const val TRANSPORT_QUEUE_ATTRIBUTE = "transport-group"
+
+        fun createRootEventID(
+            book: String,
+            scope: String,
+            eventRouter: MessageRouter<EventBatch>
+        ): EventID {
+            val customBookRoot = try {
+                 Event.start()
+                    .endTimestamp()
+                    .name("$scope with non-default book ${book}: ${Instant.now()}")
+                    .type("RootEvent")
+                    .description("Root event")
+                    .status(Event.Status.PASSED)
+                    .toProto(book, scope)
+            } catch (e: IOException) {
+                throw IllegalStateException("Can not create root event with custom book.", e)
+            }
+            try {
+                eventRouter.sendAll(EventBatch.newBuilder().apply { addEvents(customBookRoot) }.build())
+            } catch (e: IOException) {
+                throw IllegalStateException("Can not send root event with custom book.", e)
+            }
+            return customBookRoot.id
+
+        }
     }
 }

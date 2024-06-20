@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2023 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -83,8 +83,14 @@ fun main(args: Array<String>) = try {
     val protoMessageRouter = factory.messageRouterMessageGroupBatch
     val transportMessageRouter = factory.transportGroupBatchRouter
 
+    val boxName = factory.boxConfiguration.boxName
+    require(boxName.isNotBlank()) { "Box name can't be blank." }
+    val defaultBook = factory.boxConfiguration.bookName
+    require(defaultBook.isNotBlank()) { "Default book name can't be blank." }
+
     Microservice(
-        factory.rootEventId,
+        defaultBook,
+        boxName,
         settings,
         factory::readDictionary,
         eventRouter,
@@ -114,10 +120,12 @@ fun main(args: Array<String>) = try {
 data class SessionSettings(
     val sessionAlias: String,
     val sessionGroup: String = sessionAlias,
+    val bookName: String? = null,
     val handler: IHandlerSettings,
     val mangler: IManglerSettings? = null,
 ) {
     init {
+        bookName?.run { require(isNotBlank()) { "Custom book name shouldn't be blank." } }
         require(sessionAlias.isNotBlank()) { "'${::sessionAlias.name}' is blank" }
         require(sessionGroup.isNotBlank()) { "'${::sessionGroup.name}' is blank" }
     }
