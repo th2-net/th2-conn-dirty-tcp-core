@@ -22,6 +22,7 @@ import com.exactpro.th2.common.grpc.MessageID
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
+import com.exactpro.th2.conn.dirty.tcp.core.api.IListener
 import com.exactpro.th2.conn.dirty.tcp.core.api.IMangler
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.Channel
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
@@ -51,10 +52,11 @@ class ChannelFactory(
         book: String,
         handler: IHandler,
         mangler: IMangler,
+        listener: IListener,
         eventId: EventID,
     ): Unit = synchronized(this) {
         require(sessionAlias !in sessions) { "Session is already registered: $sessionAlias" }
-        sessions[sessionAlias] = SessionContext(book, sessionGroup, handler, mangler, eventId, true)
+        sessions[sessionAlias] = SessionContext(book, sessionGroup, handler, mangler, listener, eventId, true)
     }
 
     fun createChannel(
@@ -85,6 +87,7 @@ class ChannelFactory(
             publishConnectEvents,
             context.handler,
             context.mangler,
+            context.listener,
             onEvent,
             getMessageAcceptorByBook(context.book),
             executor,
@@ -123,6 +126,7 @@ class ChannelFactory(
         val group: String,
         val handler: IHandler,
         val mangler: IMangler,
+        val listener: IListener,
         val eventId: EventID,
         val isRoot: Boolean,
     )

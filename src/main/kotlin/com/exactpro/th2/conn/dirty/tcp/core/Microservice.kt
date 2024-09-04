@@ -47,8 +47,10 @@ import com.exactpro.th2.common.utils.message.id
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.ALIAS_SELECTOR
 import com.exactpro.th2.common.utils.message.transport.MessageBatcher.Companion.GROUP_SELECTOR
 import com.exactpro.th2.common.utils.message.transport.toProto
+import com.exactpro.th2.conn.dirty.tcp.core.api.EMPTY_LISTENER
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
+import com.exactpro.th2.conn.dirty.tcp.core.api.IListener
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.HandlerContext
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.ManglerContext
@@ -357,13 +359,14 @@ class Microservice(
             sendEvent
         ) { clazz -> grpcRouter.getService(clazz) }
         val handler = handlerFactory.create(handlerContext)
+        val listener = if (handler is IListener) handler else EMPTY_LISTENER
 
         val mangler = when (val settings = session.mangler) {
             null -> NoOpMangler
             else -> manglerFactory.create(ManglerContext(settings, readDictionary, sendEvent))
         }
 
-        channelFactory.registerSession(sessionGroup, sessionAlias, book, handler, mangler, sessionEventId)
+        channelFactory.registerSession(sessionGroup, sessionAlias, book, handler, mangler, listener, sessionEventId)
 
         registerResource("handler-$sessionAlias", handler::close)
         registerResource("mangler-$sessionAlias", mangler::close)

@@ -28,6 +28,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
+import com.exactpro.th2.conn.dirty.tcp.core.api.IListener
 import com.exactpro.th2.conn.dirty.tcp.core.api.IMangler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.ITcpChannelHandler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.TcpChannel
@@ -67,6 +68,7 @@ class Channel(
     private val publishConnectEvents: Boolean,
     private val handler: IHandler,
     private val mangler: IMangler,
+    private val listener: IListener,
     private val onEvent: (Event) -> Unit,
     private val onMessage: MessageAcceptor,
     private val executor: ScheduledExecutorService,
@@ -181,8 +183,12 @@ class Channel(
                     logger.trace { "Post process of '${messageId?.toJson()}' message id: ${hexDump(data)}" }
                     if (mode.mangle && data.isReadable) mangler.postOutgoing(this@Channel, data, metadata)
                     metadata[IChannel.OPERATION_TIMESTAMP_PROPERTY] = sendingTimestamp.toString()
-                    val resolvedMessageId = runCatching { if(messageId != null) onMessage.accept(data, messageId, metadata, eventId) else null }
-                        .onFailure { logger.error(it) { "Error while adding message into batcher" } }.getOrNull()
+                    val resolvedMessageId = runCatching {
+                        if(messageId != null) {
+                            onMessage.accept(data, messageId, metadata, eventId)
+                                .also { listener.postOutgoingMqPublish(data, it, metadata) }
+                        } else null
+                    }.onFailure { logger.error(it) { "Error while adding message into batcher" } }.getOrNull()
                     runCatching { if(resolvedMessageId != null && event != null) { storeEvent(event.messageID(resolvedMessageId), eventId ?: this@Channel.eventId) } }
                         .onFailure { logger.error(it) { "Error while publishing mangler event." } }
                 }.onFailure {
