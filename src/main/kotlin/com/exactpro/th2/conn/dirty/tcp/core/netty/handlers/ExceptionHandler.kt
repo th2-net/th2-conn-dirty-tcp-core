@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,9 +16,10 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core.netty.handlers
 
+import com.exactpro.th2.conn.dirty.tcp.core.util.tryCatch
 import io.netty.channel.ChannelHandlerContext
 import io.netty.channel.ChannelInboundHandlerAdapter
-import mu.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLogging
 
 class ExceptionHandler(
     private val onError: (Throwable) -> Unit,
@@ -26,13 +27,14 @@ class ExceptionHandler(
 ) : ChannelInboundHandlerAdapter() {
     private val logger = KotlinLogging.logger {}
 
+    @Deprecated("Deprecated in Java")
     override fun exceptionCaught(ctx: ChannelHandlerContext, cause: Throwable) {
         logger.error(cause) { "Error during communication with: ${ctx.channel().remoteAddress()}" }
 
         onEvent {
             logger.info { "Closing channel due to error" }
 
-            cause.runCatching(onError).onFailure {
+            cause.tryCatch(onError).onFailure {
                 logger.error(it) { "Failed to handle error during communication with: ${ctx.channel().remoteAddress()}" }
             }
 

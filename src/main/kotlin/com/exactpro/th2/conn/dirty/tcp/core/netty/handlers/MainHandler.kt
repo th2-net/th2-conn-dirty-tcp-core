@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,11 +16,12 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core.netty.handlers
 
+import com.exactpro.th2.conn.dirty.tcp.core.util.tryCatch
 import io.netty.buffer.ByteBuf
 import io.netty.buffer.ByteBufUtil.hexDump
 import io.netty.channel.ChannelHandlerContext
 import io.netty.handler.codec.ByteToMessageDecoder
-import mu.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.time.Instant
 
 class MainHandler(
@@ -37,7 +38,7 @@ class MainHandler(
         super.channelActive(ctx)
 
         onEvent {
-            runCatching(onConnect).onFailure {
+            tryCatch(onConnect).onFailure {
                 ctx.fireExceptionCaught("Failed to handle connect to: ${ctx.channel().remoteAddress()}", it)
             }
         }
@@ -51,7 +52,7 @@ class MainHandler(
             val message = buf.readMessage(ctx) ?: break
 
             onEvent {
-                runCatching { onMessage(message, receiveTime) }.onFailure {
+                tryCatch { onMessage(message, receiveTime) }.onFailure {
                     ctx.fireExceptionCaught("Failed to handle message received from: ${ctx.channel().remoteAddress()} (message: ${hexDump(message)})", it)
                 }
             }
@@ -63,14 +64,14 @@ class MainHandler(
         super.channelInactive(ctx)
 
         onEvent {
-            runCatching(onDisconnect).onFailure {
+            tryCatch(onDisconnect).onFailure {
                 ctx.fireExceptionCaught("Failed to handle disconnect from: ${ctx.channel().remoteAddress()}", it)
             }
         }
     }
 
     private fun ByteBuf.readMessage(ctx: ChannelHandlerContext): ByteBuf? {
-        return runCatching(onReceive).onFailure(ctx::fireExceptionCaught).getOrNull()
+        return tryCatch(onReceive).onFailure(ctx::fireExceptionCaught).getOrNull()
     }
 
     companion object {

@@ -1,7 +1,7 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    id "com.exactpro.th2.gradle.publish" version "0.0.8"
+    id "com.exactpro.th2.gradle.publish" version "0.1.1"
     id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
     id 'maven-publish'
 }
@@ -37,11 +37,11 @@ repositories {
 }
 
 dependencies {
-    implementation('com.exactpro.th2:common:5.13.1-dev') {
+    implementation('com.exactpro.th2:common:5.14.0-dev') {
         exclude group: 'com.exactpro.th2', module: 'cradle-core'
         exclude group: 'com.exactpro.th2', module: 'cradle-cassandra'
     }
-    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.2.3-dev'
+    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.3.0-dev'
     implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
 
     implementation 'org.slf4j:slf4j-api'
@@ -53,7 +53,8 @@ dependencies {
 
     implementation group: 'com.fasterxml.jackson.datatype', name: 'jackson-datatype-jsr310'
     implementation group: 'com.fasterxml.jackson.module', name: 'jackson-module-kotlin'
-    implementation group: 'io.github.microutils', name: 'kotlin-logging', version: '3.0.5'
+    implementation group: 'io.github.oshai', name: 'kotlin-logging', version: '5.1.4'
+
     implementation group: 'io.netty', name: 'netty-all'
     implementation group: 'org.jctools', name: 'jctools-core', version: '4.0.5'
 

@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.6.0)
+# th2-conn-dirty-tcp-core (3.7.0)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -26,6 +26,11 @@ the [link](https://exactpro.atlassian.net/wiki/spaces/TH2/pages/1048838145/TH2+T
 * [mangler](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IMangler.kt) - secondary connection handler. Its
   main purpose is to mangle outgoing messages. It can also be used to send unsolicited messages and preform
   unexpected connections/disconnections.
+
+* [listener](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IChannelListener.kt) - optional channel listener.
+  The main handler can implement it to get additional information during the execution.
+  It is notified whenever the following operations are executed within the channel:
+  * message published to MQ
 
 # Send mode
 
@@ -266,6 +271,14 @@ spec:
 ```
 
 # Changelog
+
+## 3.7.0
+* provided `IChannelListener` interface for implementations 
+* updated:
+  * th2 gradle plugin: `0.1.1`
+  * common: `5.14.0-dev`
+  * common-utils: `2.3.0-dev`
+  * kotlin-logging: `5.1.4`
 
 ## 3.6.0
 * provided ability to override component book name for session.
