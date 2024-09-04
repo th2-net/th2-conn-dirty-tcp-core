@@ -28,13 +28,14 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.Security
 import com.exactpro.th2.conn.dirty.tcp.core.api.IChannel.SendMode
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
-import com.exactpro.th2.conn.dirty.tcp.core.api.IListener
+import com.exactpro.th2.conn.dirty.tcp.core.api.IChannelListener
 import com.exactpro.th2.conn.dirty.tcp.core.api.IMangler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.ITcpChannelHandler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.TcpChannel
 import com.exactpro.th2.conn.dirty.tcp.core.util.nextMessageId
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
+import com.exactpro.th2.conn.dirty.tcp.core.util.tryCatch
 import com.exactpro.th2.netty.bytebuf.util.asExpandable
 import com.google.common.util.concurrent.RateLimiter
 import io.netty.buffer.ByteBuf
@@ -51,7 +52,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit.MILLISECONDS
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
-import mu.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.jctools.queues.SpscUnboundedArrayQueue
 import com.exactpro.th2.common.event.Event as CommonEvent
 import io.netty.util.concurrent.Future as NettyFuture
@@ -68,7 +69,7 @@ class Channel(
     private val publishConnectEvents: Boolean,
     private val handler: IHandler,
     private val mangler: IMangler,
-    private val listener: IListener,
+    private val listener: IChannelListener,
     private val onEvent: (Event) -> Unit,
     private val onMessage: MessageAcceptor,
     private val executor: ScheduledExecutorService,
@@ -179,17 +180,20 @@ class Channel(
             // The post-processing is executed asynchronously after sending message via tcp channel where original buffer is released
             val data = Unpooled.copiedBuffer(buffer).asReadOnly()
             thenAcceptAsync({ (messageId, sendingTimestamp) ->
-                runCatching {
+                tryCatch {
                     logger.trace { "Post process of '${messageId?.toJson()}' message id: ${hexDump(data)}" }
                     if (mode.mangle && data.isReadable) mangler.postOutgoing(this@Channel, data, metadata)
                     metadata[IChannel.OPERATION_TIMESTAMP_PROPERTY] = sendingTimestamp.toString()
-                    val resolvedMessageId = runCatching {
+                    val resolvedMessageId = tryCatch {
                         if(messageId != null) {
-                            onMessage.accept(data, messageId, metadata, eventId)
-                                .also { listener.postOutgoingMqPublish(data, it, metadata) }
+                            onMessage.accept(data, messageId, metadata, eventId).also {
+                                tryCatch {
+                                    listener.postOutgoingMqPublish(this@Channel, data, it, metadata, eventId)
+                                }.onFailure { logger.error(it) { "Error while listener notification about outgoing mq publish" } }
+                            }
                         } else null
                     }.onFailure { logger.error(it) { "Error while adding message into batcher" } }.getOrNull()
-                    runCatching { if(resolvedMessageId != null && event != null) { storeEvent(event.messageID(resolvedMessageId), eventId ?: this@Channel.eventId) } }
+                    tryCatch { if(resolvedMessageId != null && event != null) { storeEvent(event.messageID(resolvedMessageId), eventId ?: this@Channel.eventId) } }
                         .onFailure { logger.error(it) { "Error while publishing mangler event." } }
                 }.onFailure {
                     logger.error(it) { "Post process of '${messageId?.toJson()}' message id failure" }
@@ -283,8 +287,8 @@ class Channel(
     override fun onClose() {
         if (publishConnectEvents) onInfo("Disconnected from: $address (session: $sessionAlias)")
 
-        runCatching(handler::onClose).onFailure(::onError)
-        runCatching(mangler::onClose).onFailure(::onError)
+        tryCatch(handler::onClose).onFailure(::onError)
+        tryCatch(mangler::onClose).onFailure(::onError)
 
         if (reconnect) {
             executor.schedule({ if (!isOpen && reconnect) open() }, reconnectDelay, MILLISECONDS)

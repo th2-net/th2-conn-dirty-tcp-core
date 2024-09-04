@@ -25,7 +25,7 @@ import com.exactpro.th2.common.grpc.RawMessage as ProtoRawMessage
 
 /**
  * Handles protocol messages and events, maintains session on a set of [channels][IChannel] belonging to a single session.
- * Optionally your class can also implement [IListener] interface.
+ * Optionally your class can also implement [IChannelListener] interface.
  */
 @ThreadSafe
 @JvmDefaultWithoutCompatibility

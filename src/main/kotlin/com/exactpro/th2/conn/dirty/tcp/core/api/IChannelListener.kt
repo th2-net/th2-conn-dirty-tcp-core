@@ -16,25 +16,32 @@
 
 package com.exactpro.th2.conn.dirty.tcp.core.api
 
+import com.exactpro.th2.common.grpc.EventID
 import com.exactpro.th2.common.grpc.MessageID
 import io.netty.buffer.ByteBuf
 import javax.annotation.concurrent.ThreadSafe
 
-internal val EMPTY_LISTENER = object : IListener {}
+internal val EMPTY_LISTENER = object : IChannelListener {}
 
 /**
- * Listens events related to performed operations.
+ * Listens [IChannel] events related to performed operations.
  * Implementation shouldn't modify state of passed arguments.
  * This interface can be implemented the same class implements [IHandler]
  */
 @ThreadSafe
 @JvmDefaultWithoutCompatibility
-interface IListener {
+interface IChannelListener {
     /**
      * This method is called after outgoing [message] was published to MQ (whether it'll be called or not depends on [send-mode][IChannel.SendMode])
      *
      * @param message buffer with published message
      * @param metadata message metadata
      */
-    fun postOutgoingMqPublish(message: ByteBuf, messageId: MessageID, metadata: MutableMap<String, String>): Unit = Unit
+    fun postOutgoingMqPublish(
+        channel: IChannel,
+        message: ByteBuf,
+        messageId: MessageID,
+        metadata: MutableMap<String, String>,
+        eventId: EventID?
+    ): Unit = Unit
 }

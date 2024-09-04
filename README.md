@@ -27,8 +27,8 @@ the [link](https://exactpro.atlassian.net/wiki/spaces/TH2/pages/1048838145/TH2+T
   main purpose is to mangle outgoing messages. It can also be used to send unsolicited messages and preform
   unexpected connections/disconnections.
 
-* [listener](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IListener.kt) - optionally listener.
-  Its main purpose is to listen performed operations.
+* [listener](src/main/kotlin/com/exactpro/th2/conn/dirty/tcp/core/api/IChannelListener.kt) - optionally channel listener.
+  Its main purpose is to listen performed operations in a channel.
 
 # Send mode
 
@@ -271,7 +271,12 @@ spec:
 # Changelog
 
 ## 3.7.0
-* provided `IListener` interface for implementations 
+* provided `IChannelListener` interface for implementations 
+* updated:
+  * th2 gradle plugin: `0.1.1`
+  * common: `5.14.0-dev`
+  * common-utils: `2.3.0-dev`
+  * kotlin-logging: `5.1.4`
 
 ## 3.6.0
 * provided ability to override component book name for session.

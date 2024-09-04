@@ -50,7 +50,7 @@ import com.exactpro.th2.common.utils.message.transport.toProto
 import com.exactpro.th2.conn.dirty.tcp.core.api.EMPTY_LISTENER
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandler
 import com.exactpro.th2.conn.dirty.tcp.core.api.IHandlerFactory
-import com.exactpro.th2.conn.dirty.tcp.core.api.IListener
+import com.exactpro.th2.conn.dirty.tcp.core.api.IChannelListener
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.HandlerContext
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.ManglerContext
@@ -64,10 +64,11 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toProtoRawMessageBuilder
 import com.exactpro.th2.conn.dirty.tcp.core.util.toTransportRawMessageBuilder
+import com.exactpro.th2.conn.dirty.tcp.core.util.tryCatch
 import io.netty.buffer.ByteBuf
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
-import mu.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.IOException
 import java.io.InputStream
 import java.time.Instant
@@ -207,13 +208,13 @@ class Microservice(
     fun run() {
         handlers.forEach { (group, handlers) ->
             handlers.forEach { (session, handler) ->
-                runCatching(handler::onStart).onFailure {
+                tryCatch(handler::onStart).onFailure {
                     throw IllegalStateException("Failed to start handler: $group/$session", it)
                 }
             }
         }
 
-        val proto = runCatching {
+        val proto = tryCatch {
             checkNotNull(protoMessageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE, RAW_QUEUE_ATTRIBUTE))
         }.onSuccess { monitor ->
             registerResource("proto-raw-monitor", monitor::unsubscribe)
@@ -221,7 +222,7 @@ class Microservice(
             K_LOGGER.warn(it) { "Failed to subscribe to input protobuf queue" }
         }
 
-        val transport = runCatching {
+        val transport = tryCatch {
             checkNotNull(transportMessageRouter.subscribe(::handleBatch, INPUT_QUEUE_ATTRIBUTE, TRANSPORT_QUEUE_ATTRIBUTE))
         }.onSuccess { monitor ->
             registerResource("transport-raw-monitor", monitor::unsubscribe)
@@ -237,7 +238,7 @@ class Microservice(
     @Suppress("UNUSED_PARAMETER")
     private fun handleBatch(metadata: DeliveryMetadata, batch: MessageGroupBatch) {
         batch.groupsList.forEach { group ->
-            group.runCatching(::handleGroup).recoverCatching { cause ->
+            group.tryCatch(::handleGroup).recoverCatching { cause ->
                 onError("Failed to handle protobuf message group", group, cause)
             }
         }
@@ -282,7 +283,7 @@ class Microservice(
     @Suppress("UNUSED_PARAMETER")
     private fun handleBatch(metadata: DeliveryMetadata, batch: GroupBatch) {
         batch.groups.forEach { group ->
-            group.runCatching {
+            group.tryCatch {
                 handleGroup(group, batch.book, batch.sessionGroup)
             }.recoverCatching { cause ->
                 onError("Failed to handle transport message group", group, batch.book, batch.sessionGroup, cause)
@@ -359,7 +360,7 @@ class Microservice(
             sendEvent
         ) { clazz -> grpcRouter.getService(clazz) }
         val handler = handlerFactory.create(handlerContext)
-        val listener = if (handler is IListener) handler else EMPTY_LISTENER
+        val listener = if (handler is IChannelListener) handler else EMPTY_LISTENER
 
         val mangler = when (val settings = session.mangler) {
             null -> NoOpMangler
@@ -431,7 +432,7 @@ class Microservice(
         // Also, origin message id can be invalid according to MessageUtils.isValid check
         val event = error.toErrorEvent(cause)
             .bodyData(BodyMessage().apply { data = "Origin message Id: ${id.logId}" })
-        K_LOGGER.error("$error (message: ${id.logId})", cause)
+        K_LOGGER.error(cause) { "$error (message: ${id.logId})" }
         onEvent(event.toProto(parentEventId))
     }
 

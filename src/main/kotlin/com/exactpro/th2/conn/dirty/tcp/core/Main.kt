@@ -25,12 +25,13 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.api.IManglerSettings
 import com.exactpro.th2.conn.dirty.tcp.core.api.impl.mangler.BasicManglerFactory
 import com.exactpro.th2.conn.dirty.tcp.core.util.load
+import com.exactpro.th2.conn.dirty.tcp.core.util.tryCatch
 import com.fasterxml.jackson.databind.json.JsonMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinFeature.NullIsSameAsDefault
 import com.fasterxml.jackson.module.kotlin.KotlinModule.Builder
-import mu.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.ConcurrentLinkedDeque
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.thread
@@ -45,14 +46,13 @@ fun main(args: Array<String>) = try {
     Runtime.getRuntime().addShutdownHook(thread(start = false, name = "shutdown-hook") {
         resources.descendingIterator().forEach { (resource, destructor) ->
             LOGGER.debug { "Destroying resource: $resource" }
-            runCatching(destructor).apply {
-                onSuccess { LOGGER.debug { "Successfully destroyed resource: $resource" } }
-                onFailure { LOGGER.error(it) { "Failed to destroy resource: $resource" } }
-            }
+            tryCatch(destructor)
+                .onSuccess { LOGGER.debug { "Successfully destroyed resource: $resource" } }
+                .onFailure { LOGGER.error(it) { "Failed to destroy resource: $resource" } }
         }
     })
 
-    val factory = runCatching {
+    val factory = tryCatch {
         CommonFactory.createFromArguments(*args)
     }.getOrElse {
         LOGGER.error(it) { "Failed to create common factory with arguments: ${args.joinToString(" ")}" }
