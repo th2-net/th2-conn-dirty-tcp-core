@@ -310,11 +310,11 @@ class Channel(
      */
     private inline fun <T> sendWithLock(block: CompletableFuture<T>.() -> Unit): CompletableFuture<T> =
         CompletableFuture<T>().apply {
+            lock.lock()
             try {
-                lock.lock()
-                limiter.acquire().also { waited_time ->
-                    if(waited_time > 0) {
-                        logger.info { "Waited for ${waited_time} seconds." }
+                limiter.acquire().also { waitedTime ->
+                    if(waitedTime > 0) {
+                        logger.info { "Waited for $waitedTime seconds." }
                     }
                 }
 
