@@ -234,40 +234,31 @@ class Microservice(
 
     @Suppress("UNUSED_PARAMETER")
     private fun handleBatch(metadata: DeliveryMetadata, batch: MessageGroupBatch) {
-        batch.groupsList.forEach { group ->
-            group.runCatching(::handleGroup).recoverCatching { cause ->
-                onError("Failed to handle protobuf message group", group, cause)
+        when (batch.groupsCount) {
+            0 -> K_LOGGER.warn { "Received an empty protobuf batch" }
+            1 -> {
+                val group = batch.groupsList.single()
+                group.runCatching(::handleGroup).onFailure { cause ->
+                    onHandleError("Failed to handle protobuf message group", group, cause)
+                }
             }
+            else -> handleMultipleMessages(batch)
         }
     }
     private fun handleGroup(group: MessageGroup) {
-        if (group.messagesCount != 1) {
-            onError("Protobuf message group must contain only a single message", group)
+        if (!validateGroup(group)) {
             return
         }
 
-        val message = group.messagesList[0]
-
-        if (!message.hasRawMessage()) {
-            onHandleError("Protobuf message is not a raw message", message)
-            return
-        }
-
+        val message = group.messagesList.single()
         val rawMessage = message.rawMessage
-
-        rawMessage.eventId?.also { eventId ->
-            if (!bookNames.contains(eventId.bookName)) {
-                onHandleError("Unexpected book name: ${eventId.bookName} (expected one of: ${bookNames})", message)
-                return
-            }
-        }
 
         val sessionAlias = rawMessage.sessionAlias
         val sessionGroup = rawMessage.sessionGroup.ifBlank { sessionAlias }
         val book = rawMessage.bookName
 
         val handler = channelFactory.getHandler(book, sessionGroup, sessionAlias) ?: run {
-            onHandleError("Unknown session book or group or alias: $book/$sessionGroup/$sessionAlias", message)
+            onHandleError("Unknown session group or alias: $sessionGroup/$sessionAlias", message)
             return
         }
 
@@ -277,48 +268,103 @@ class Microservice(
         }
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    private fun handleBatch(metadata: DeliveryMetadata, batch: GroupBatch) {
-        batch.groups.forEach { group ->
-            group.runCatching {
-                handleGroup(group, batch.book, batch.sessionGroup)
-            }.recoverCatching { cause ->
-                onError("Failed to handle transport message group", group, batch.book, batch.sessionGroup, cause)
+    private fun validateGroup(group: MessageGroup): Boolean {
+        if (group.messagesCount != 1) {
+            onHandleError("Protobuf message group must contain only a single message", group)
+            return false
+        }
+
+        val message = group.messagesList[0]
+
+        if (!message.hasRawMessage()) {
+            onHandleError("Protobuf message is not a raw message", message)
+            return false
+        }
+
+        val rawMessage = message.rawMessage
+
+        rawMessage.eventId?.also { eventId ->
+            if (!bookNames.contains(eventId.bookName)) {
+                onHandleError("Unexpected book name: ${eventId.bookName} (expected one of: ${bookNames})", message)
+                return false
+            }
+        }
+        return true
+    }
+
+    private fun handleMultipleMessages(batch: MessageGroupBatch) {
+        var valid = true
+        for (group in batch.groupsList) {
+            val groupValid = validateGroup(group)
+            valid = valid and groupValid
+        }
+        if (!valid) {
+            return
+        }
+
+        data class ProtoMessageDestination(
+            val alias: String,
+            val group: String,
+            val book: String,
+        )
+
+        val messagesByDestination: Map<ProtoMessageDestination, List<AnyMessage>> =
+            batch.groupsList.asSequence()
+                .map { it.messagesList.single() }
+                .groupBy {
+                    it.rawMessage.run {
+                        ProtoMessageDestination(
+                            alias = sessionAlias,
+                            group = sessionGroup.ifBlank { sessionAlias },
+                            book = bookName,
+                        )
+                    }
+                }
+
+        for ((sessionKey, messagesToSend) in messagesByDestination) {
+            val (sessionAlias, sessionGroup, book) = sessionKey
+            val handler = channelFactory.getHandler(book, sessionGroup, sessionAlias)
+            if (handler == null) {
+                onHandleError("Unknown session book or group or alias: $book/$sessionGroup/$sessionAlias", messagesToSend)
+                continue
+            }
+
+            handler.sendAllProto(messagesToSend.map { it.rawMessage }).exceptionally {
+                onHandleError("Failed to send protobuf message", messagesToSend, it)
+                emptyList()
             }
         }
     }
 
-    private fun handleGroup(group: TransportMessageGroup, batchBook: String, sessionGroup: String) {
-        if (group.messages.size != 1) {
-            onError("Transport message group must contain only a single message", group, batchBook, sessionGroup)
-            return
-        }
-
-        val message = group.messages[0]
-
-        if (message !is RawMessage) {
-            onHandleError("Transport message is not a raw message", message, batchBook, sessionGroup)
-            return
-        }
-
-        message.eventId?.also { eventId ->
-            if(!bookNames.contains(eventId.book)) {
-                onHandleError(
-                    "Unexpected book name: ${eventId.book} (expected one of the following: $bookNames)",
-                    message,
-                    batchBook,
-                    sessionGroup
-                )
-                return
+    @Suppress("UNUSED_PARAMETER")
+    private fun handleBatch(metadata: DeliveryMetadata, batch: GroupBatch) {
+        when (batch.groups.size) {
+            0 -> K_LOGGER.warn { "Received an empty transport batch" }
+            1 -> {
+                val group = batch.groups.single()
+                group.runCatching {
+                    handleGroup(group, batch.book, batch.sessionGroup)
+                }.onFailure { cause ->
+                    onHandleError("Failed to handle transport message group",
+                        group, batch.book, batch.sessionGroup, cause)
+                }
             }
+            else -> handleMultipleMessages(batch)
+        }
+    }
+
+    private fun handleGroup(group: TransportMessageGroup, batchBook: String, sessionGroup: String) {
+        if (!validateGroup(group, batchBook, sessionGroup)) {
+            return
         }
 
+        val message = group.messages.single().asRaw()
         val sessionAlias = message.id.sessionAlias
         val resolvedSessionGroup = sessionGroup.ifBlank { sessionAlias }
 
         val handler = channelFactory.getHandler(batchBook, resolvedSessionGroup, sessionAlias) ?: run {
             onHandleError(
-                "Unknown session book or group or alias: $batchBook/$resolvedSessionGroup/$sessionAlias",
+                "Unknown session group or alias: $resolvedSessionGroup/$sessionAlias",
                 message,
                 batchBook,
                 resolvedSessionGroup
@@ -329,6 +375,81 @@ class Microservice(
         handler.send(message).exceptionally {
             onHandleError("Failed to send transport message", message, batchBook, resolvedSessionGroup, it)
             null
+        }
+    }
+
+    private fun validateGroup(group: TransportMessageGroup, batchBook: String, sessionGroup: String): Boolean {
+        if (group.messages.size != 1) {
+            onHandleError("Transport message group must contain only a single message", group, batchBook, sessionGroup)
+            return false
+        }
+
+        val message = group.messages[0]
+
+        if (message !is RawMessage) {
+            onHandleError("Transport message is not a raw message", message, batchBook, sessionGroup)
+            return false
+        }
+
+        message.eventId?.also { eventId ->
+            if(!bookNames.contains(eventId.book)) {
+                onHandleError(
+                    "Unexpected book name: ${eventId.book} (expected one of the following: $bookNames)",
+                    message,
+                    batchBook,
+                    sessionGroup
+                )
+                return false
+            }
+        }
+        return true
+    }
+
+    private fun handleMultipleMessages(batch: GroupBatch) {
+        val batchBook = batch.book
+        val sessionGroup = batch.sessionGroup
+
+        var valid = true
+        for (group in batch.groups) {
+            val groupValid = validateGroup(group, batchBook, sessionGroup)
+            valid = valid and groupValid
+        }
+        if (!valid) {
+            return
+        }
+
+        data class TransportMessageDestination(
+            val alias: String,
+            val group: String,
+        )
+
+        val messagesByDestination: Map<TransportMessageDestination, List<RawMessage>> =
+            batch.groups.asSequence()
+                .map { it.messages.single().asRaw() }
+                .groupBy {
+                    TransportMessageDestination(
+                        alias = it.id.sessionAlias,
+                        group = sessionGroup.ifBlank { it.id.sessionAlias },
+                    )
+                }
+
+        for ((sessionKey, messagesToSend) in messagesByDestination) {
+            val (sessionAlias, group) = sessionKey
+            val handler = channelFactory.getHandler(batchBook, group, sessionAlias)
+            if (handler == null) {
+                onHandleError(
+                    "Unknown session group or alias: $group/$sessionAlias",
+                    messagesToSend,
+                    batchBook,
+                    sessionGroup,
+                )
+                continue
+            }
+
+            handler.sendAllTransport(messagesToSend).exceptionally {
+                onHandleError("Failed to send transport message", messagesToSend, batchBook, sessionGroup, it)
+                emptyList()
+            }
         }
     }
 
@@ -433,31 +554,51 @@ class Microservice(
     }
 
 
-    private fun onError(error: String, group: MessageGroup, cause: Throwable? = null) {
-        val messageIds = group.messagesList.groupBy(
+    private fun onHandleError(error: String, group: MessageGroup, cause: Throwable? = null) {
+        onHandleError(error, group.messagesList, cause)
+    }
+
+    private fun onHandleError(error: String, messages: List<AnyMessage>, cause: Throwable? = null) {
+        val messageIds = messages.groupBy(
             { it.getErrorEventId() },
             { it.messageId }
         )
 
-        onError(cause, error, messageIds)
+        onHandleError(cause, error, messageIds)
     }
 
-    private fun onError(
+    private fun onHandleError(
         error: String,
         group: TransportMessageGroup,
         book: String,
         sessionGroup: String,
         cause: Throwable? = null
     ) {
-        val messageIds = group.messages.groupBy(
+        onHandleError(
+            error,
+            group.messages,
+            book,
+            sessionGroup,
+            cause,
+        )
+    }
+
+    private fun onHandleError(
+        error: String,
+        messages: List<Message<*>>,
+        book: String,
+        sessionGroup: String,
+        cause: Throwable? = null
+    ) {
+        val messageIds = messages.groupBy(
             { it.getErrorEventId(book) },
             { it.id.toProto(book, sessionGroup) }
         )
 
-        onError(cause, error, messageIds)
+        onHandleError(cause, error, messageIds)
     }
 
-    private fun onError(cause: Throwable?, error: String, messageIds: Map<EventID, List<MessageID>>) {
+    private fun onHandleError(cause: Throwable?, error: String, messageIds: Map<EventID, List<MessageID>>) {
         K_LOGGER.error(cause) { "$error (messages: ${messageIds.values.flatten().map(MessageID::logId)})" }
 
         messageIds.forEach { (parentEventId, messageIds) ->
@@ -482,6 +623,11 @@ class Microservice(
                 bookContexts[it]?.rootEventID ?: error("Not found root event id for book: $it")
             )
         }
+    }
+
+    private fun Message<*>.asRaw(): RawMessage {
+        require(this is RawMessage) { "message ${this::class} is not a raw message" }
+        return this
     }
 
     companion object {

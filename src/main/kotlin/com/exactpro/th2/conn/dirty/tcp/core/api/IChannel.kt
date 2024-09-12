@@ -68,7 +68,7 @@ interface IChannel {
     fun open(): CompletableFuture<Unit>
 
     /**
-     * Sends [message] to this channel (if channel is closed it will be opened first).
+     * Sends [message] to this channel (if channel is closed it must be opened first).
      *
      * Depending on send [mode] message and [metadata] could be passed to [IHandler.onOutgoing] and/or [IMangler.onOutgoing]
      * methods which can modify message content and substitute metadata (in case of [IHandler.onOutgoing]).
@@ -90,6 +90,8 @@ interface IChannel {
      * @param eventId id of event which produced this message
      * @param mode message send mode (specifies who would handle message/metadata - handler, mangler, both or none of them)
      *
+     * @throws IllegalStateException if channel is not opened
+     *
      * @return ID of sent message
      */
     fun send(
@@ -98,6 +100,22 @@ interface IChannel {
         eventId: EventID? = null,
         mode: SendMode = HANDLE_AND_MANGLE,
     ): CompletableFuture<MessageID>
+
+    /**
+     * Sends all data from [envelopes] as a single buffer to the channel.
+     * Each [Envelope] is processed as it would be done in [send] method.
+     *
+     * @param envelopes list of [Envelope] to be sent in a single buffer
+     * @param mode message send mode (specifies who would handle message/metadata - handler, mangler, both or none of them)
+     *
+     * @see send
+     * @throws IllegalStateException if channel is not opened
+     * @return list of message IDs associated with [envelopes]
+     */
+    fun sendAll(
+        envelopes: List<Envelope>,
+        mode: SendMode = HANDLE_AND_MANGLE,
+    ) : CompletableFuture<List<MessageID>>
 
     /**
      * Closes this channel (i.e. closes a TCP connection) gracefully.
@@ -145,6 +163,15 @@ interface IChannel {
          */
         DIRECT_MQ(handle = false, mangle = false, socketSend = false, mqPublish = true)
     }
+
+    /**
+     * Container for message's [ByteBuf], metadata and event ID related to that message
+     */
+    class Envelope(
+        val message: ByteBuf,
+        val metadata: MutableMap<String, String>,
+        val eventId: EventID?,
+    )
 
     companion object {
         /**
