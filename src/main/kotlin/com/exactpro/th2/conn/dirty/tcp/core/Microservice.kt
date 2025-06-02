@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2024 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2025 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -62,10 +62,10 @@ import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toProtoRawMessageBuilder
 import com.exactpro.th2.conn.dirty.tcp.core.util.toTransportRawMessageBuilder
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.netty.buffer.ByteBuf
 import io.netty.channel.nio.NioEventLoopGroup
 import io.netty.handler.traffic.GlobalTrafficShapingHandler
-import mu.KotlinLogging
 import java.io.IOException
 import java.io.InputStream
 import java.time.Instant
