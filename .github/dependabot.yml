@@ -15,6 +15,14 @@ updates:
         update-types:
           - version-update:semver-major
           - version-update:semver-minor
+      - dependency-name: org.jetbrains.kotlin:kotlin-reflect
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
+      - dependency-name: org.jetbrains.kotlin:kotlin-test-junit5
+        update-types:
+          - version-update:semver-major
+          - version-update:semver-minor
   - package-ecosystem: github-actions
     directory: /
     labels:
