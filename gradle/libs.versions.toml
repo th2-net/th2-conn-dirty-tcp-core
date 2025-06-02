@@ -1,5 +1,5 @@
 [versions]
-kotlin = "1.8.22"
+kotlin = "2.1.21"
 
 [libraries]
 th2-common = { group = "com.exactpro.th2", name = "common", version = "5.15.0-dev" }
