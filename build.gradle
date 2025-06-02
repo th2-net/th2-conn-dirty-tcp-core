@@ -1,17 +1,29 @@
+/*
+ * Copyright 2025 Exactpro (Exactpro Systems Limited)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    id "com.exactpro.th2.gradle.publish" version "0.0.8"
-    id 'org.jetbrains.kotlin.jvm' version "${kotlin_version}"
+    alias(libs.plugins.th2.publish)
+    alias(libs.plugins.kotlin.jvm)
     id 'maven-publish'
 }
 
 group = 'com.exactpro.th2'
 version = release_version
-
-kotlin {
-    jvmToolchain(11)
-}
 
 tasks.withType(KotlinCompile).configureEach {
     kotlinOptions.freeCompilerArgs += '-Xjvm-default=all-compatibility'
@@ -19,10 +31,6 @@ tasks.withType(KotlinCompile).configureEach {
 
 repositories {
     mavenCentral()
-
-    maven {
-        url 'https://s01.oss.sonatype.org/content/repositories/snapshots/'
-    }
 
     maven {
         url 'https://s01.oss.sonatype.org/content/repositories/releases/'
@@ -37,27 +45,26 @@ repositories {
 }
 
 dependencies {
-    implementation('com.exactpro.th2:common:5.13.1-dev') {
+    implementation(libs.th2.common) {
         exclude group: 'com.exactpro.th2', module: 'cradle-core'
         exclude group: 'com.exactpro.th2', module: 'cradle-cassandra'
     }
-    implementation group: 'com.exactpro.th2', name: 'common-utils', version: '2.2.3-dev'
-    implementation group: 'com.exactpro.th2', name: 'netty-bytebuf-utils', version: '0.0.1'
+    implementation(libs.th2.common.utils)
+    implementation(libs.th2.netty.bytebuf.utils)
 
     implementation 'org.slf4j:slf4j-api'
 
     implementation "org.apache.commons:commons-lang3"
 
-//    implementation group: 'org.jetbrains.kotlin', name: 'kotlin-stdlib-jdk8', version: kotlin_version
-    implementation group: 'org.jetbrains.kotlin', name: 'kotlin-reflect', version: kotlin_version
+    implementation(libs.kotlin.reflect)
+    implementation(libs.kotlin.logging)
 
     implementation group: 'com.fasterxml.jackson.datatype', name: 'jackson-datatype-jsr310'
     implementation group: 'com.fasterxml.jackson.module', name: 'jackson-module-kotlin'
-    implementation group: 'io.github.microutils', name: 'kotlin-logging', version: '3.0.5'
     implementation group: 'io.netty', name: 'netty-all'
-    implementation group: 'org.jctools', name: 'jctools-core', version: '4.0.5'
+    implementation(libs.jctools.core)
 
-    testImplementation group: 'org.jetbrains.kotlin', name: 'kotlin-test-junit5', version: kotlin_version
+    testImplementation(libs.kotlin.test.junit5)
 }
 
 test {
