@@ -9,7 +9,7 @@ th2-netty-bytebuf-utils = { group = "com.exactpro.th2", name = "netty-bytebuf-ut
 jctools-core = { group = "org.jctools", name = "jctools-core", version = "4.0.5" }
 
 kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect", version.ref = "kotlin" }
-kotlin-logging = { group = "io.github.oshai", name = "kotlin-logging", version = "5.1.4" }
+kotlin-logging = { group = "io.github.oshai", name = "kotlin-logging", version = "7.0.12" }
 
 kotlin-test-junit5 = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit5", version.ref = "kotlin" }
 
