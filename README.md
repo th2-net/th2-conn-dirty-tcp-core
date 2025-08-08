@@ -267,6 +267,15 @@ spec:
 
 # Changelog
 
+## 3.7.0
+* updated:
+  * kotlin: `2.2.0`
+  * kotlin-logging: `7.0.12`
+  * th2 gradle plugin: `0.3.4` (bom: `4.13.1`)
+  * common: `5.16.0-dev`
+  * common-utils: `2.3.1-dev`
+  * netty-bytebuf-utils: `0.3.0`
+
 ## 3.6.0
 * provided ability to override component book name for session.
 * migrated to th2 gradle plugin `0.0.8`
