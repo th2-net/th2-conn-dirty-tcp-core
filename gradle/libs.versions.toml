@@ -14,5 +14,5 @@ kotlin-logging = { group = "io.github.oshai", name = "kotlin-logging", version =
 kotlin-test-junit5 = { group = "org.jetbrains.kotlin", name = "kotlin-test-junit5", version.ref = "kotlin" }
 
 [plugins]
-th2-publish = { id = "com.exactpro.th2.gradle.publish", version = "0.3.5" }
+th2-publish = { id = "com.exactpro.th2.gradle.publish", version = "0.3.6" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
