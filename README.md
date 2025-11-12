@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.6.0)
+# th2-conn-dirty-tcp-core (3.7.0)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -268,12 +268,15 @@ spec:
 # Changelog
 
 ## 3.7.0
+* added `th2.epoch_timestamp` property to a message.
+  It contains the send/receive operation timestamp in epoch format: `1762527482725532000`
+* migrated from `io.github.microutils` to `io.github.oshai` for `kotlin-logging`
 * updated:
-  * kotlin: `2.2.0`
-  * kotlin-logging: `7.0.12`
-  * th2 gradle plugin: `0.3.4` (bom: `4.13.1`)
-  * common: `5.16.0-dev`
-  * common-utils: `2.3.1-dev`
+  * kotlin: `2.2.21`
+  * kotlin-logging: `7.0.13`
+  * th2 gradle plugin: `0.3.10` (bom: `4.14.2`)
+  * common: `5.16.1-dev`
+  * common-utils: `2.4.0-dev`
   * netty-bytebuf-utils: `0.3.0`
 
 ## 3.6.0
