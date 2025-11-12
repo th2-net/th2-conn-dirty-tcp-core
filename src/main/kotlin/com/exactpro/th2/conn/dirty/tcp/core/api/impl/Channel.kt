@@ -32,6 +32,7 @@ import com.exactpro.th2.conn.dirty.tcp.core.api.IMangler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.ITcpChannelHandler
 import com.exactpro.th2.conn.dirty.tcp.core.netty.TcpChannel
 import com.exactpro.th2.conn.dirty.tcp.core.util.nextMessageId
+import com.exactpro.th2.conn.dirty.tcp.core.util.toEpoch
 import com.exactpro.th2.conn.dirty.tcp.core.util.toErrorEvent
 import com.exactpro.th2.conn.dirty.tcp.core.util.toEvent
 import com.exactpro.th2.netty.bytebuf.util.asExpandable
@@ -52,6 +53,7 @@ import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.jctools.queues.SpscUnboundedArrayQueue
+import kotlin.collections.set
 import com.exactpro.th2.common.event.Event as CommonEvent
 import io.netty.util.concurrent.Future as NettyFuture
 
@@ -181,6 +183,7 @@ class Channel(
                     logger.trace { "Post process of '${messageId?.toJson()}' message id: ${hexDump(data)}" }
                     if (mode.mangle && data.isReadable) mangler.postOutgoing(this@Channel, data, metadata)
                     metadata[IChannel.OPERATION_TIMESTAMP_PROPERTY] = sendingTimestamp.toString()
+                    metadata[IChannel.EPOCH_TIMESTAMP_PROPERTY] = sendingTimestamp.toEpoch().toString()
                     val resolvedMessageId = runCatching { if(messageId != null) onMessage.accept(data, messageId, metadata, eventId) else null }
                         .onFailure { logger.error(it) { "Error while adding message into batcher" } }.getOrNull()
                     runCatching { if(resolvedMessageId != null && event != null) { storeEvent(event.messageID(resolvedMessageId), eventId ?: this@Channel.eventId) } }
@@ -267,7 +270,9 @@ class Channel(
         val messageCopy = Unpooled.copiedBuffer(message)
         message.release()
         // Add the timestamp in the end just in case
-        val finalMetadata = metadata.add(IChannel.OPERATION_TIMESTAMP_PROPERTY, receiveTimestamp.toString())
+        val finalMetadata = metadata
+            .add(IChannel.OPERATION_TIMESTAMP_PROPERTY, receiveTimestamp.toString())
+            .add(IChannel.EPOCH_TIMESTAMP_PROPERTY, receiveTimestamp.toEpoch().toString())
 
         onMessage.accept(messageCopy, messageId, finalMetadata, null)
     }

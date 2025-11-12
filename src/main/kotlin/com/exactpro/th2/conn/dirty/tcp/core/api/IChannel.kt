@@ -1,5 +1,5 @@
 /*
- * Copyright 2021-2021 Exactpro (Exactpro Systems Limited)
+ * Copyright 2021-2025 Exactpro (Exactpro Systems Limited)
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -117,6 +117,7 @@ interface IChannel {
         val acceptAllCerts: Boolean = false,
     )
 
+    @Suppress("unused")
     enum class SendMode(val handle: Boolean, val mangle: Boolean, val socketSend: Boolean, val mqPublish: Boolean) {
         /**
          * Message and its metadata will pass through [IHandler.onOutgoing] and [IMangler.onOutgoing] before send
@@ -151,5 +152,9 @@ interface IChannel {
          * Property with the timestamp when bytes were actually send/received to/from tcp channel.
          */
         const val OPERATION_TIMESTAMP_PROPERTY: String = "th2.operation_timestamp"
+        /**
+         * Property with the timestamp in epoch format when bytes were actually send/received to/from tcp channel.
+         */
+        const val EPOCH_TIMESTAMP_PROPERTY: String = "th2.epoch_timestamp"
     }
 }

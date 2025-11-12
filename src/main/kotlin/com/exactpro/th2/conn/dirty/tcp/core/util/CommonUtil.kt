@@ -193,3 +193,5 @@ inline fun <reified T> load(): T = ServiceLoader.load(T::class.java).toList().ru
         else -> error("More than 1 instance of ${T::class.simpleName} has been found: $this")
     }
 }
+
+fun Instant.toEpoch(): Long = epochSecond * 1_000_000_000 + nano
