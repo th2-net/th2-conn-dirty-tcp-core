@@ -86,6 +86,7 @@ class Microservice(
     private val eventRouter: MessageRouter<EventBatch>,
     private val protoMessageRouter: MessageRouter<MessageGroupBatch>,
     private val transportMessageRouter: MessageRouter<GroupBatch>,
+    maxEventBatchBytes: UInt,
     private val handlerFactory: IHandlerFactory,
     private val manglerFactory: IManglerFactory,
     private val grpcRouter: GrpcRouter,
@@ -119,6 +120,7 @@ class Microservice(
     }
 
     private val eventBatcher = EventBatcher(
+        maxBatchSizeInBytes = maxEventBatchBytes.toLong(),
         maxBatchSizeInItems = settings.maxBatchSize,
         maxFlushTime = settings.maxFlushTime,
         executor = executor
@@ -428,7 +430,7 @@ class Microservice(
         // Also, origin message id can be invalid according to MessageUtils.isValid check
         val event = error.toErrorEvent(cause)
             .bodyData(BodyMessage().apply { data = "Origin message Id: ${id.logId}" })
-        K_LOGGER.error("$error (message: ${id.logId})", cause)
+        K_LOGGER.error(cause) { "$error (message: ${id.logId})" }
         onEvent(event.toProto(parentEventId))
     }
 
