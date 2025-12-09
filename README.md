@@ -1,4 +1,4 @@
-# th2-conn-dirty-tcp-core (3.7.0)
+# th2-conn-dirty-tcp-core (3.7.1)
 
 This is a core library for dirty TCP connections which takes care of:
 
@@ -266,6 +266,11 @@ spec:
 ```
 
 # Changelog
+
+## 3.7.1
+
+* updated:
+  * common: `5.17.0-dev`
 
 ## 3.7.0
 * added `th2.epoch_timestamp` property to a message.
