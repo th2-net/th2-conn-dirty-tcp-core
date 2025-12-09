@@ -96,6 +96,7 @@ fun main(args: Array<String>) = try {
         eventRouter,
         protoMessageRouter,
         transportMessageRouter,
+        factory.cradleMaxEventBatchSize.toUInt(),
         handlerFactory,
         manglerFactory,
         factory.grpcRouter
