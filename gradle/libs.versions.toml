@@ -6,7 +6,7 @@ th2-common = { group = "com.exactpro.th2", name = "common", version = "5.17.2-de
 th2-common-utils = { group = "com.exactpro.th2", name = "common-utils", version = "2.4.0-dev" }
 th2-netty-bytebuf-utils = { group = "com.exactpro.th2", name = "netty-bytebuf-utils", version = "0.3.0" }
 
-jctools-core = { group = "org.jctools", name = "jctools-core", version = "4.0.5" }
+jctools-core = { group = "org.jctools", name = "jctools-core", version = "4.0.6" }
 
 kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect", version.ref = "kotlin" }
 kotlin-logging = { group = "io.github.oshai", name = "kotlin-logging", version = "7.0.14" }
